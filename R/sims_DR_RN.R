@@ -1,6 +1,9 @@
 # Code for Dose-Response simulations incorporating VI
 library(tidyverse); library(viridis); library(brms); library(tidybayes)
 library(patchwork)
+bayesplot::color_scheme_set("darkgray")
+theme_set(theme_bw(14))
+
 # 1. Simulation on the Normal scale ----
 # Parameter list
 alpha = 100
@@ -199,7 +202,8 @@ p3 = priors %>%
 
 (p1 + p2 + p3) + plot_layout(ncol = 1)
 
-## 3.1 Prior predictive checks on the population model ----
+## 3.1 Prior predictive checks 
+### 3.1.1 With the population model ----
 brm.pop.prior= brm(data = df, 
                    bf.pop, 
                    backend = "cmdstan",
@@ -211,15 +215,33 @@ brm.pop.prior= brm(data = df,
                    file = "mods/brm.pop.prior")
 
 brm.pop.prior
-color_scheme_set("darkgray")
-pp_check(brm.pop.prior, ndraws = 100)
-conditional_effects(brm.pop.prior)
+# pp_check(brm.pop.prior, ndraws = 500)
+# conditional_effects(brm.pop.prior)
 
+
+### 3.1.2 With the individual model ----
+brm.vi.prior= brm(data = df, 
+                   bf.vi, 
+                   backend = "cmdstan",
+                   prior = priors.vi, 
+                   sample_prior = "only", 
+                   file_refit = "always",
+                   save_pars = save_pars(all = TRUE),
+                   seed = 42, 
+                   file = "mods/brm.vi.prior")
+
+brm.vi.prior
+# pp_check(brm.vi, ndraws = 1000)
+# conditional_effects(brm.vi)
+
+## 3.2 Fitting to data ----
+## 3.2.1 With the population model ----
 brm.pop= brm(data = df, 
              bf.pop, 
              backend = "cmdstan",
              prior = priors.pop, 
-             sample_prior = "yes",
+             sample_prior = "yes", 
+             file_refit = "always",
              save_pars = save_pars(all = TRUE),
              seed = 42, 
              cores = 4,
@@ -227,4 +249,24 @@ brm.pop= brm(data = df,
              control = list(adapt_delta = .95,
                             max_treedepth = 12), 
              file = "mods/brm.pop")
+brm.pop
+# pp_check(brm.pop, ndraws = 1000)
+# conditional_effects(brm.pop)
 
+## 3.2.2 With the individual model ----
+brm.vi = brm(data = df, 
+             bf.vi, 
+             backend = "cmdstan",
+             prior = priors.vi, 
+             sample_prior = "yes", 
+             file_refit = "always",
+             save_pars = save_pars(all = TRUE),
+             seed = 42, 
+             cores = 4,
+             threads = 3,
+             control = list(adapt_delta = .95,
+                            max_treedepth = 12), 
+             file = "mods/brm.vi")
+brm.vi
+# pp_check(brm.vi, ndraws = 1000)
+# conditional_effects(brm.vi)
