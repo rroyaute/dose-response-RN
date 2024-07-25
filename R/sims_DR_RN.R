@@ -270,3 +270,21 @@ brm.vi = brm(data = df,
 brm.vi
 # pp_check(brm.vi, ndraws = 1000)
 # conditional_effects(brm.vi)
+
+re = crossing(Dose = seq(min(df$Dose), 
+                      max(df$Dose),
+                      length.out=100),
+              ID = unique(df$ID)) %>% 
+  add_epred_draws(brm.vi, re_formula = NULL, 
+                  scale = "response", ndraws = 20)
+
+re %>% 
+  ggplot(aes(y = .epred, x = t)) +
+  geom_line(aes(y = .epred, x = t, group = .draw), size = .5, alpha = .5) +
+  geom_point(data = df, aes(y=l, x=t, color = ID)) +
+  facet_wrap(~ID, nrow = 6, ncol = 5) + 
+  scale_color_viridis() +
+  ylab("Mass (mg)") + 
+  xlab("Time") +
+  theme_bw(12) +
+  theme(legend.position = "none")
