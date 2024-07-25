@@ -134,7 +134,7 @@ fig = df %>%
 fig
 
 
-# 4. Fit the model to brms
+# 4. Fit the model to brms ----
 bf.pop = bf(y ~ log(alpha) - beta * (Dose - NEC) * step((Dose - NEC)), 
             alpha + beta + NEC ~ 1, 
             nl = T, 
@@ -167,7 +167,7 @@ priors.vi =
   prior(lkj(4), class = cor)
 
 # Plot priors
-p1 = priors %>% 
+p1 = priors.vi %>% 
   parse_dist() %>% 
   filter(class == "b") %>% 
   ggplot(aes(xdist = .dist_obj, y = format(.dist_obj))) +
@@ -178,7 +178,7 @@ p1 = priors %>%
   theme_bw(12) +
   theme(axis.text.y = element_text(angle = 90)) 
 
-p2 = priors %>% 
+p2 = priors.vi %>% 
   parse_dist() %>% 
   filter(class == "sd") %>% 
   ggplot(aes(xdist = .dist_obj, y = format(.dist_obj))) +
@@ -189,7 +189,7 @@ p2 = priors %>%
   theme_bw(12) +
   theme(axis.text.y = element_text(angle = 90)) 
 
-p3 = priors %>% 
+p3 = priors.vi %>% 
   parse_dist() %>% 
   filter(class == "sigma") %>% 
   ggplot(aes(xdist = .dist_obj, y = format(.dist_obj))) +
@@ -206,7 +206,7 @@ p3 = priors %>%
 ### 3.1.1 With the population model ----
 brm.pop.prior= brm(data = df, 
                    bf.pop, 
-                   backend = "cmdstan",
+                   # backend = "cmdstan",
                    prior = priors.pop, 
                    sample_prior = "only", 
                    file_refit = "always",
@@ -256,7 +256,7 @@ brm.pop
 ## 3.2.2 With the individual model ----
 brm.vi = brm(data = df, 
              bf.vi, 
-             backend = "cmdstan",
+             #backend = "cmdstan",
              prior = priors.vi, 
              sample_prior = "yes", 
              file_refit = "always",
