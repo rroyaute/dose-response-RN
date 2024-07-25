@@ -48,7 +48,7 @@ DR_fun_log_exp = function(Dose, alpha , beta, NEC){
 
 plot(Dose, exp(DR_fun_log(Dose, alpha , beta, NEC)))
 
-sigma = .05
+sigma = .08
 
 set.seed(42)
 df = crossing(rep = 1:nreps, Dose) %>% 
