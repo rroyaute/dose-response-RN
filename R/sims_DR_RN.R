@@ -1,0 +1,33 @@
+# Code for Dose-Response simulations incorporating VI
+library(tidyverse)
+
+# Parameter list
+alpha = 100
+beta = .8
+Dose = seq(0, 100, by = 10)
+NEC = 25
+sigma = 1
+nreps = 10
+
+DR_fun = function(Dose, alpha , beta, NEC){
+  yhat = ifelse(Dose < NEC, alpha, alpha * exp(- beta * (Dose - NEC)))
+  return(yhat)
+}
+
+plot(Dose, DR_fun(Dose, alpha , beta, NEC))
+
+set.seed(42)
+df = crossing(rep = 1:nreps, Dose) %>% 
+  mutate(yhat = DR_fun(Dose, alpha, beta, NEC)) %>% 
+  mutate(y = rnorm(n(), yhat, sigma))
+df %>% 
+  ggplot(aes(y = y, x = Dose)) +
+  geom_point(alpha = .2, size = 2.5) +
+  geom_function(fun = DR_fun, 
+                args = list(alpha = alpha, 
+                            beta = beta, 
+                            NEC = NEC),
+                color = "red", size = 1) +
+  ylim(0, 100) +
+  labs(x = "Dose", y = "y response") +
+  theme_bw(14)
