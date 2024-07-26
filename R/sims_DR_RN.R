@@ -3,6 +3,19 @@ library(tidyverse); library(viridis); library(brms); library(tidybayes)
 library(patchwork)
 bayesplot::color_scheme_set("darkgray")
 theme_set(theme_bw(14))
+theme_darkgray <- function() {
+  theme_grey() %+replace%
+    theme(
+      panel.background = element_rect(fill = "gray20"),
+      panel.grid = element_line(color = "gray50"),
+      plot.background = element_rect(fill = "gray10", color = NA),
+      legend.background = element_rect(fill = "gray10"),
+      legend.key = element_rect(fill = "gray20"),
+      text = element_text(color = "gray90"),
+      axis.text = element_text(color = "gray90"),
+      line = element_line(color = "gray90")
+    )
+}
 
 # 1. Simulation on the Normal scale ----
 # Parameter list
@@ -135,35 +148,37 @@ fig
 
 
 # 4. Fit the model to brms ----
-bf.pop = bf(y ~ log(alpha) - beta * (Dose - NEC) * step((Dose - NEC)), 
+## 4.1 Define formulas ---- 
+bf.pop = bf(y ~ log(alpha) - beta * (Dose - NEC) * (Dose > NEC), 
             alpha + beta + NEC ~ 1, 
             nl = T, 
             family = lognormal)
-bf.vi = bf(y ~ log(alpha) - beta * (Dose - NEC) * step((Dose - NEC)), 
+bf.vi = bf(y ~ log(alpha) - beta * (Dose - NEC) * (Dose > NEC), 
         alpha + beta + NEC ~ 1 + (1|c|ID), 
         nl = T, 
         family = lognormal)
 priors = get_prior(bf.vi, df)
 
+## 4.2 Set priors ----
 priors.pop = 
   # Intercept priors
   prior(normal(100, 20), nlpar = alpha, class = b, lb = 0) +
-  prior(normal(0, 1), nlpar = beta, class = b) +
+  prior(exponential(5), nlpar = beta, class = b, lb = 0) +
   prior(uniform(0, 100), nlpar = NEC, class = b, lb = 0, ub = 100) + 
-  # # Residual prior
-  prior(exponential(1), class = sigma)
+  # Residual prior
+  prior(exponential(5), class = sigma)
 
 priors.vi = 
   # Intercept priors
   prior(normal(100, 20), nlpar = alpha, class = b, lb = 0) +
-  prior(normal(0, 1), nlpar = beta, class = b) +
+  prior(exponential(5), nlpar = beta, class = b, lb = 0) +
   prior(uniform(0, 100), nlpar = NEC, class = b, lb = 0, ub = 100) + 
-  # Random effects priors (informative priors with 20 % CV)
-  prior(exponential(1), nlpar = alpha, class = sd, group = ID) +
-  prior(exponential(1), nlpar = beta, class = sd, group = ID) +
-  prior(exponential(1), nlpar = NEC, class = sd, group = ID) +
+  # Random effects priors
+  prior(exponential(5), nlpar = alpha, class = sd, group = ID) +
+  prior(exponential(5), nlpar = beta, class = sd, group = ID) +
+  prior(exponential(5), nlpar = NEC, class = sd, group = ID) +
   # # Residual prior
-  prior(exponential(1), class = sigma) +
+  prior(exponential(5), class = sigma) +
   prior(lkj(4), class = cor)
 
 # Plot priors
@@ -202,11 +217,11 @@ p3 = priors.vi %>%
 
 (p1 + p2 + p3) + plot_layout(ncol = 1)
 
-## 3.1 Prior predictive checks 
-### 3.1.1 With the population model ----
+## 4.3 Prior predictive checks ----
+### 4.3.1 With the population model ----
 brm.pop.prior= brm(data = df, 
                    bf.pop, 
-                   # backend = "cmdstan",
+                   backend = "cmdstan",
                    prior = priors.pop, 
                    sample_prior = "only", 
                    file_refit = "always",
@@ -215,11 +230,17 @@ brm.pop.prior= brm(data = df,
                    file = "mods/brm.pop.prior")
 
 brm.pop.prior
-# pp_check(brm.pop.prior, ndraws = 500)
-# conditional_effects(brm.pop.prior)
+pp_check(brm.pop.prior, ndraws = 100)
+conditional_effects(brm.pop.prior)
+cond_plot = conditional_effects(brm.pop.prior, ndraws = 100, spaghetti = T, plot = F)
 
+# ggplot(cond_plot[[1]], aes(x = effect1__, y = estimate__)) +
+#   geom_ribbon(aes(ymin = lower__, ymax = upper__), fill = "gray50", alpha = 0.3) +
+#   geom_line(color = "black") +
+#   # theme_darkgray() +
+#   labs(x = names(cond_plot)[1], y = "Response")
 
-### 3.1.2 With the individual model ----
+### 4.3.2 With the individual model ----
 brm.vi.prior= brm(data = df, 
                    bf.vi, 
                    backend = "cmdstan",
@@ -231,11 +252,11 @@ brm.vi.prior= brm(data = df,
                    file = "mods/brm.vi.prior")
 
 brm.vi.prior
-# pp_check(brm.vi, ndraws = 1000)
-# conditional_effects(brm.vi)
+pp_check(brm.vi.prior, ndraws = 100)
+conditional_effects(brm.vi.prior)
 
-## 3.2 Fitting to data ----
-## 3.2.1 With the population model ----
+## 4.4 Fitting to data ----
+## 4.4.1 With the population model ----
 brm.pop= brm(data = df, 
              bf.pop, 
              backend = "cmdstan",
@@ -250,13 +271,13 @@ brm.pop= brm(data = df,
                             max_treedepth = 12), 
              file = "mods/brm.pop")
 brm.pop
-# pp_check(brm.pop, ndraws = 1000)
-# conditional_effects(brm.pop)
+pp_check(brm.pop, ndraws = 100)
+conditional_effects(brm.pop, ndraws = 100, spaghetti = T)
 
-## 3.2.2 With the individual model ----
+## 4.4.2 With the individual model ----
 brm.vi = brm(data = df, 
              bf.vi, 
-             #backend = "cmdstan",
+             backend = "cmdstan",
              prior = priors.vi, 
              sample_prior = "yes", 
              file_refit = "always",
@@ -268,9 +289,11 @@ brm.vi = brm(data = df,
                             max_treedepth = 12), 
              file = "mods/brm.vi")
 brm.vi
-# pp_check(brm.vi, ndraws = 1000)
-# conditional_effects(brm.vi)
+pp_check(brm.vi, ndraws = 100)
+conditional_effects(brm.vi, re_formula = NULL)
 
+
+# 5. Plot individual tendencies -----
 re = crossing(Dose = seq(min(df$Dose), 
                       max(df$Dose),
                       length.out=100),
@@ -279,12 +302,118 @@ re = crossing(Dose = seq(min(df$Dose),
                   scale = "response", ndraws = 20)
 
 re %>% 
-  ggplot(aes(y = .epred, x = t)) +
-  geom_line(aes(y = .epred, x = t, group = .draw), size = .5, alpha = .5) +
-  geom_point(data = df, aes(y=l, x=t, color = ID)) +
+  ggplot(aes(y = .epred, x = Dose)) +
+  geom_line(aes(y = .epred, x = Dose, group = .draw), size = .5, alpha = .5) +
+  geom_point(data = df, aes(y = y, x = Dose, color = ID)) +
   facet_wrap(~ID, nrow = 6, ncol = 5) + 
   scale_color_viridis() +
-  ylab("Mass (mg)") + 
-  xlab("Time") +
+  ylab("y response") + 
+  xlab("Dose") +
   theme_bw(12) +
   theme(legend.position = "none")
+
+
+re = brm.vi %>%
+  spread_draws(# Population values
+    b_alpha_Intercept, b_beta_Intercept, b_NEC_Intercept, 
+    # Individual offsets
+    r_ID__alpha[ID,Intercept], r_ID__beta[ID,Intercept], r_ID__NEC[ID,Intercept],
+    # Individual variances
+    sd_ID__alpha_Intercept, sd_ID__beta_Intercept, sd_ID__NEC_Intercept,
+    sigma) %>% 
+  # Individual offsets converted onto the original length scale (in micrometers)
+  mutate(alpha_i = (b_alpha_Intercept + r_ID__alpha),
+         beta_i = (b_beta_Intercept + r_ID__beta),
+         NEC_i = b_alpha_Intercept + r_ID__NEC) %>% 
+  # Population averge distribution
+  mutate(alpha_dist = rnorm(n(), b_alpha_Intercept, sd_ID__alpha_Intercept),
+         beta_dist = rnorm(n(), b_beta_Intercept, sd_ID__beta_Intercept),
+         NEC_dist = rnorm(n(), b_NEC_Intercept, sd_ID__NEC_Intercept))
+re.mean = re %>% 
+  select(.chain, .iteration, .draw, alpha_i, beta_i, NEC_i) %>% 
+  mean_qi(alpha_i, beta_i, NEC_i)
+# Summarize individual values into mean, lower and upper 95 % quantiles
+
+# Plot population average (diagonal elements)
+alpha_dist = re %>% 
+  ggplot(aes(x = alpha_dist)) +
+  stat_histinterval(slab_color = "gray45", 
+                    outline_bars = TRUE) +
+  labs(x = "", y = expression(alpha)) +
+  theme_bw(12) +
+  theme(aspect.ratio=1)
+beta_dist = re %>% 
+  ggplot(aes(x = beta_dist)) +
+  stat_histinterval(slab_color = "gray45", 
+                    outline_bars = TRUE) +
+  labs(x = "", y = "") +
+  theme_bw(12) +
+  theme(aspect.ratio=1)
+NEC_dist = re %>% 
+  ggplot(aes(x = NEC_dist)) +
+  stat_histinterval(slab_color = "gray45", 
+                    outline_bars = TRUE) +
+  labs(x = expression(NEC), y = "") +
+  theme_bw(12) +
+  theme(aspect.ratio=1)
+
+# Plot individual average with CI (lower diagonal elements)
+corr1 = re.mean %>% 
+  ggplot(aes(x = alpha_i, y = beta_i)) +
+  geom_errorbarh(aes(xmin = alpha_i.lower, xmax = alpha_i.upper)) +
+  geom_errorbar(aes(ymin = beta_i.lower, ymax = beta_i.upper)) +
+  geom_point(alpha = .8, size = 3) +
+  labs(x = "", y = expression(beta)) +
+  theme_bw(12) +
+  theme(aspect.ratio=1)
+corr2 = re.mean %>% 
+  ggplot(aes(x = beta_i, y = NEC_i)) +
+  geom_errorbarh(aes(xmin = beta_i.lower, xmax = beta_i.upper)) +
+  geom_errorbar(aes(ymin = NEC_i.lower, ymax = NEC_i.upper)) +
+  geom_point(alpha = .8, size = 3) +
+  labs(x = expression(beta), y = expression(NEC)) +
+  theme_bw(12) +
+  theme(aspect.ratio=1)
+corr3 = re.mean %>% 
+  ggplot(aes(x = beta_i, y = NEC_i)) +
+  geom_errorbarh(aes(xmin = beta_i.lower, xmax = beta_i.upper)) +
+  geom_errorbar(aes(ymin = NEC_i.lower, ymax = NEC_i.upper)) +
+  geom_point(alpha = .8, size = 3) +
+  labs(x = expression(beta), y = "") +
+  theme_bw(12) +
+  theme(aspect.ratio=1)
+
+# Plot correlation estimate (upper diagonal elements)
+dcorr1 = brm.vi %>% 
+  spread_draws(`cor.*`, regex = TRUE) %>% 
+  ggplot(aes(x = cor_ID__alpha_Intercept__beta_Intercept)) +
+  stat_halfeye() +
+  geom_vline(xintercept = 0, linewidth = 1, color = "black", linetype = "dashed") +
+  xlim(-1, 1) +
+  labs(x = "", y = "") +
+  theme_bw(12) +
+  theme(aspect.ratio=1)
+dcorr2 = brm.vi %>% 
+  spread_draws(`cor.*`, regex = TRUE) %>% 
+  ggplot(aes(x = cor_ID__alpha_Intercept__NEC_Intercept)) +
+  stat_halfeye() +
+  geom_vline(xintercept = 0, linewidth = 1, color = "black", linetype = "dashed") +
+  xlim(-1, 1) +
+  labs(x = "", y = "") +
+  theme_bw(12) +
+  theme(aspect.ratio=1)
+dcorr3 = brm.vi %>% 
+  spread_draws(`cor.*`, regex = TRUE) %>% 
+  ggplot(aes(x = cor_ID__beta_Intercept__NEC_Intercept)) +
+  stat_halfeye() +
+  geom_vline(xintercept = 0, linewidth = 1, color = "black", linetype = "dashed") +
+  xlim(-1, 1) +
+  labs(x = "", y = "") +
+  theme_bw(12) +
+  theme(aspect.ratio=1)
+
+# Arrange plot into 3 x 3 grid
+alpha_dist + dcorr1 + dcorr2 +
+  corr1 + beta_dist + dcorr3 +
+  corr2 + corr3 + NEC_dist +
+  plot_layout(ncol = 3, nrow = 3, byrow = T)
