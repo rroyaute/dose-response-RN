@@ -181,6 +181,20 @@ priors.vi =
   # # Residual prior
   prior(exponential(50), class = sigma) +
   prior(lkj(4), class = cor)
+
+priors.vi.2 = 
+  # Intercept priors
+  prior(normal(100, 20), nlpar = alpha, class = b, lb = 0) +
+  prior(exponential(10), nlpar = beta, class = b, lb = 0) +
+  prior(uniform(0, 100), nlpar = NEC, class = b, lb = 0, ub = 100) + 
+  # Random effects priors
+  prior(exponential(1), nlpar = alpha, class = sd, group = ID) +
+  prior(exponential(1), nlpar = beta, class = sd, group = ID) +
+  prior(exponential(1), nlpar = NEC, class = sd, group = ID) +
+  # Residual prior
+  prior(exponential(1), class = sigma) +
+  prior(lkj(4), class = cor)
+
 priors.vi.nocorr = 
   # Intercept priors
   prior(normal(100, 20), nlpar = alpha, class = b, lb = 0) +
