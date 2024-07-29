@@ -1,7 +1,35 @@
 library(tidyverse); library(viridis); library(brms); library(tidybayes)
-library(patchwork); library(SBC)
+library(patchwork); library(SBC); library(future)
+
 bayesplot::color_scheme_set("darkgray")
 theme_set(theme_bw(14))
+
+use_cmdstanr <- getOption("SBC.vignettes_cmdstanr", TRUE) # Set to false to use rstan instead
+
+if(use_cmdstanr) {
+  options(brms.backend = "cmdstanr")
+} else {
+  options(brms.backend = "rstan") 
+  rstan::rstan_options(auto_write = TRUE)
+}
+
+# Using parallel processing
+plan(multisession)
+
+# The fits are very fast,
+# so we force a minimum chunk size to reduce overhead of
+# paralellization and decrease computation time.
+options(SBC.min_chunk_size = 5)
+
+# Setup caching of results
+if(use_cmdstanr) {
+  cache_dir <- "./_brms_SBC_cache"
+} else { 
+  cache_dir <- "./_brms_rstan_SBC_cache"
+}
+if(!dir.exists(cache_dir)) {
+  dir.create(cache_dir)
+}
 
 # Simulate data
 D = seq(0, 100, by = 10)
@@ -16,7 +44,7 @@ sim_generator = function(N, I) {
   ID = rep(1:I, each = length(D))
   
   b_alpha_Intercept = rnorm(1, 100, 20)
-  b_beta_Intercept = rnorm(0, 1)
+  b_beta_Intercept = rlnorm(1, -2, .5)
   b_NEC_Intercept = runif(1, 0, 100)
   sigma = rexp(1, 1)
   sd_ID__alpha_Intercept = rexp(1, 1)
@@ -38,11 +66,11 @@ sim_generator = function(N, I) {
   
   # Need to add cor variables somehow
   
-  yhat = log(b_alpha_Intercept + r_ID__alpha[ID]) - 
+  log_yhat = log(b_alpha_Intercept + r_ID__alpha[ID]) - 
     (b_beta_Intercept + r_ID__beta_Intercept[ID]) * 
     (Dose - (b_NEC_Intercept + r_ID__NEC_Intercept[ID])) * 
-    step((Dose > (b_NEC_Intercept + r_ID__NEC_Intercept[ID])))
-  y = rnorm(N, yhat, sigma)
+    (Dose > (b_NEC_Intercept + r_ID__NEC_Intercept[ID]))
+  y = rlnorm(N, log_yhat, sigma)
   
   list(
     variables = list(
@@ -57,11 +85,42 @@ sim_generator = function(N, I) {
       cor_ID__beta_Intercept__NEC_Intercept = cor_ID__beta_Intercept__NEC_Intercept,
       sigma = sigma
     ),
-    generated = data.frame(y = y, x = x, ID = ID)
+    generated = data.frame(y = y, Dose = Dose, ID = ID)
   )
 }
 
 n_sims_generator = SBC_generator_function(sim_generator, N = N, I = I)
 
 set.seed(12239755)
-datasets_func = generate_datasets(n_sims_generator, 1)
+datasets_func = generate_datasets(n_sims_generator, 10)
+
+priors.vi.2 = 
+  # Intercept priors
+  prior(normal(100, 20), nlpar = alpha, class = b, lb = 0) +
+  prior(exponential(10), nlpar = beta, class = b, lb = 0) +
+  prior(uniform(0, 100), nlpar = NEC, class = b, lb = 0, ub = 100) + 
+  # Random effects priors
+  prior(exponential(1), nlpar = alpha, class = sd, group = ID) +
+  prior(exponential(1), nlpar = beta, class = sd, group = ID) +
+  prior(exponential(1), nlpar = NEC, class = sd, group = ID) +
+  # Residual prior
+  prior(exponential(1), class = sigma) +
+  prior(lkj(4), class = cor)
+
+bf.vi = bf(y ~ log(alpha) - beta * (Dose - NEC) * (Dose > NEC), 
+           alpha + beta + NEC ~ 1 + (1|c|ID), 
+           nl = T, 
+           family = lognormal)
+
+backend_func <- SBC_backend_brms(bf.vi,  
+                                 prior = priors.vi.2, 
+                                 chains = 1,
+                                 template_data = datasets_func$generated[[1]],
+                                 out_stan_file = file.path(cache_dir, "brms_NEC_vi.stan"))
+
+results_func <- compute_SBC(datasets_func, backend_func, 
+                            # dquants = log_lik_dq_func, 
+                            cache_mode = "results", 
+                            cache_location = file.path(cache_dir, "func"))
+plot_rank_hist(results_func)
+plot_ecdf_diff(results_func)
