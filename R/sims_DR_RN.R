@@ -3,19 +3,6 @@ library(tidyverse); library(viridis); library(brms); library(tidybayes)
 library(patchwork)
 bayesplot::color_scheme_set("darkgray")
 theme_set(theme_bw(14))
-theme_darkgray <- function() {
-  theme_grey() %+replace%
-    theme(
-      panel.background = element_rect(fill = "gray20"),
-      panel.grid = element_line(color = "gray50"),
-      plot.background = element_rect(fill = "gray10", color = NA),
-      legend.background = element_rect(fill = "gray10"),
-      legend.key = element_rect(fill = "gray20"),
-      text = element_text(color = "gray90"),
-      axis.text = element_text(color = "gray90"),
-      line = element_line(color = "gray90")
-    )
-}
 
 # 1. Simulation on the Normal scale ----
 # Parameter list
@@ -84,8 +71,9 @@ df %>%
   theme_bw(14)
 
 #  3. Simulate individuals with different sensitivities ----
-Dose = seq(0, 100, by = 1)
+Dose = seq(0, 100, by = 10)
 n_id = 20
+sigma = .1
 rho_1_2 = -.5 # Individual with stronger initial response have lower decay rate
 rho_1_3 = .5 # Individual with stronger initial response have higher NEC
 rho_2_3 = -.5 # Individual with decay rate response lower NEC
@@ -110,7 +98,7 @@ ID = MASS::mvrnorm(n_id, Mu, Sigma) %>%
 df = ID %>%
   expand(nesting(ID, alpha_i, beta_i, NEC_i), 
          Dose = Dose) %>%
-  mutate(log_yhat = DR_fun_log(Dose, alpha, beta, NEC)) %>% 
+  mutate(log_yhat = DR_fun_log(Dose, alpha_i, beta_i, NEC_i)) %>% 
   mutate(y = rlnorm(n(), log_yhat, sigma))
 
 # Sort individuals by alpha_i and create a mapping
@@ -184,12 +172,12 @@ priors.vi =
   prior(exponential(10), nlpar = beta, class = b, lb = 0) +
   prior(uniform(0, 100), nlpar = NEC, class = b, lb = 0, ub = 100) + 
   # Random effects priors
-  # prior(exponential(.05), nlpar = alpha, class = sd, group = ID) +
-  # prior(exponential(5), nlpar = beta, class = sd, group = ID) +
-  # prior(exponential(.1), nlpar = NEC, class = sd, group = ID) +
-  prior(normal(0, 5), nlpar = beta, class = sd, group = ID, lb = 0) +
-  prior(normal(0, 5), nlpar = alpha, class = sd, group = ID, lb = 0) +
-  prior(normal(0, 10), nlpar = NEC, class = sd, group = ID, lb = 0) +
+  prior(exponential(.05), nlpar = alpha, class = sd, group = ID) +
+  prior(exponential(5), nlpar = beta, class = sd, group = ID) +
+  prior(exponential(.1), nlpar = NEC, class = sd, group = ID) +
+  # prior(normal(0, 5), nlpar = beta, class = sd, group = ID, lb = 0) +
+  # prior(normal(0, 5), nlpar = alpha, class = sd, group = ID, lb = 0) +
+  # prior(normal(0, 10), nlpar = NEC, class = sd, group = ID, lb = 0) +
   # # Residual prior
   prior(exponential(50), class = sigma) +
   prior(lkj(4), class = cor)
@@ -199,12 +187,12 @@ priors.vi.nocorr =
   prior(exponential(10), nlpar = beta, class = b, lb = 0) +
   prior(uniform(0, 100), nlpar = NEC, class = b, lb = 0, ub = 100) + 
   # Random effects priors
-  # prior(exponential(.05), nlpar = alpha, class = sd, group = ID) +
-  # prior(exponential(5), nlpar = beta, class = sd, group = ID) +
-  # prior(exponential(.1), nlpar = NEC, class = sd, group = ID) +
-  prior(normal(0, 5), nlpar = beta, class = sd, group = ID, lb = 0) +
-  prior(normal(0, 5), nlpar = alpha, class = sd, group = ID, lb = 0) +
-  prior(normal(0, 10), nlpar = NEC, class = sd, group = ID, lb = 0) +
+  prior(exponential(.05), nlpar = alpha, class = sd, group = ID) +
+  prior(exponential(5), nlpar = beta, class = sd, group = ID) +
+  prior(exponential(.1), nlpar = NEC, class = sd, group = ID) +
+  # prior(normal(0, 5), nlpar = beta, class = sd, group = ID, lb = 0) +
+  # prior(normal(0, 5), nlpar = alpha, class = sd, group = ID, lb = 0) +
+  # prior(normal(0, 10), nlpar = NEC, class = sd, group = ID, lb = 0) +
   # # Residual prior
   prior(exponential(50), class = sigma)
 priors.vi.NEC = 
@@ -213,8 +201,8 @@ priors.vi.NEC =
   prior(exponential(10), nlpar = beta, class = b, lb = 0) +
   prior(uniform(0, 100), nlpar = NEC, class = b, lb = 0, ub = 100) + 
   # Random effects priors
-  # prior(exponential(.1), nlpar = NEC, class = sd, group = ID) +
-  prior(normal(0, 10), nlpar = NEC, class = sd, group = ID, lb = 0) +
+  prior(exponential(.1), nlpar = NEC, class = sd, group = ID) +
+  # prior(normal(0, 10), nlpar = NEC, class = sd, group = ID, lb = 0) +
   # # Residual prior
   prior(exponential(50), class = sigma)
 
@@ -365,6 +353,7 @@ brm.vi = brm(data = df,
 brm.vi
 pp_check(brm.vi, ndraws = 100)
 conditional_effects(brm.vi, re_formula = NULL)
+conditional_effects(brm.vi, re_formula = NULL, spaghetti = T, ndraws = 100)
 
 
 ## 4.4.3 With the individual model - no correlation ----

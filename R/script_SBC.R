@@ -6,7 +6,7 @@ theme_set(theme_bw(14))
 # Simulate data
 D = seq(0, 100, by = 10)
 I = 10
-N = length(Dose) * ID
+N = length(D) * I
 
 sim_generator = function(N, I) {
   # N - number of datapoints, I number of individuals 
@@ -41,7 +41,7 @@ sim_generator = function(N, I) {
   yhat = log(b_alpha_Intercept + r_ID__alpha[ID]) - 
     (b_beta_Intercept + r_ID__beta_Intercept[ID]) * 
     (Dose - (b_NEC_Intercept + r_ID__NEC_Intercept[ID])) * 
-    step((Dose - NEC))
+    step((Dose > (b_NEC_Intercept + r_ID__NEC_Intercept[ID])))
   y = rnorm(N, yhat, sigma)
   
   list(
@@ -52,17 +52,16 @@ sim_generator = function(N, I) {
       sd_ID__alpha_Intercept = sd_ID__alpha_Intercept,
       sd_ID__beta_Intercept = sd_ID__beta_Intercept,
       sd_ID__NEC_Intercept = sd_ID__NEC_Intercept,
-      
-      
-      
-      r_group = r_group,
+      cor_ID__alpha_Intercept__beta_Intercept = cor_ID__alpha_Intercept__beta_Intercept,
+      cor_ID__alpha_Intercept__NEC_Intercept = cor_ID__alpha_Intercept__NEC_Intercept,
+      cor_ID__beta_Intercept__NEC_Intercept = cor_ID__beta_Intercept__NEC_Intercept,
       sigma = sigma
     ),
-    generated = data.frame(y = y, x = x, group = group)
+    generated = data.frame(y = y, x = x, ID = ID)
   )
 }
 
-n_sims_generator = SBC_generator_function(sim_generator, N = 18, ID = 5)
+n_sims_generator = SBC_generator_function(sim_generator, N = N, I = I)
 
 set.seed(12239755)
 datasets_func = generate_datasets(n_sims_generator, 1)
