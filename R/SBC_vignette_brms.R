@@ -64,7 +64,7 @@ backend <- SBC_backend_brms_from_generator(generator, chains = 1, thin = 1,
 # backend <- SBC_backend_brms(y ~ x, template_data = template_data, prior = priors, warmup = 500, iter = 1000, chains = 1, thin = 1
 #                            init = 0.1)
 
-results <- compute_SBC(datasets, #backend = "cmdstanr",
+results <- compute_SBC(datasets, backend,
                        cache_mode = "results", 
                        cache_location = file.path(cache_dir, "first"))
 
@@ -127,6 +127,7 @@ backend_func <- SBC_backend_brms(y ~ x + (1 | group),
                                  # backend = "cmdstanr", 
                                  prior = priors_func, 
                                  chains = 1,
+                                 file_refit = "always",
                                  template_data = datasets_func$generated[[1]],
                                  out_stan_file = file.path(cache_dir, "brms_linreg2.stan"))
 
