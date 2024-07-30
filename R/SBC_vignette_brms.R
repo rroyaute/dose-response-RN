@@ -2,7 +2,10 @@ library(SBC)
 library(brms)
 library(ggplot2)
 
+# 0. Setup ----
+
 use_cmdstanr <- getOption("SBC.vignettes_cmdstanr", TRUE) # Set to false to use rstan instead
+# use_cmdstanr <- getOption("SBC.vignettes_cmdstanr", FALSE) # Set to false to use rstan instead
 
 if(use_cmdstanr) {
   options(brms.backend = "cmdstanr")
@@ -41,8 +44,12 @@ template_data = data.frame(y = rep(0, 15), x = rnorm(15))
 priors <- prior(normal(0,1), class = "b") +
   prior(normal(0,1), class = "Intercept") +
   prior(normal(0,1), class = "sigma")
-generator <- SBC_generator_brms(y ~ x, data = template_data, prior = priors, 
-                                thin = 50, warmup = 10000, refresh = 2000,
+generator <- SBC_generator_brms(y ~ x, 
+                                data = template_data, 
+                                # backend = "rstan",
+                                prior = priors, 
+                                thin = 50, 
+                                warmup = 10000, refresh = 2000,
                                 out_stan_file = file.path(cache_dir, "brms_linreg1.stan")
 )
 
@@ -57,7 +64,7 @@ backend <- SBC_backend_brms_from_generator(generator, chains = 1, thin = 1,
 # backend <- SBC_backend_brms(y ~ x, template_data = template_data, prior = priors, warmup = 500, iter = 1000, chains = 1, thin = 1
 #                            init = 0.1)
 
-results <- compute_SBC(datasets, backend,
+results <- compute_SBC(datasets, #backend = "cmdstanr",
                        cache_mode = "results", 
                        cache_location = file.path(cache_dir, "first"))
 
@@ -116,8 +123,10 @@ priors_func <- prior(normal(0,1), class = "b") +
   prior(normal(0,0.75), class = "sd")
 
 
-backend_func <- SBC_backend_brms(y ~ x + (1 | group),  
-                                 prior = priors_func, chains = 1,
+backend_func <- SBC_backend_brms(y ~ x + (1 | group), 
+                                 # backend = "cmdstanr", 
+                                 prior = priors_func, 
+                                 chains = 1,
                                  template_data = datasets_func$generated[[1]],
                                  out_stan_file = file.path(cache_dir, "brms_linreg2.stan"))
 
