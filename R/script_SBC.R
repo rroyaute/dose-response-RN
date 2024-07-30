@@ -45,15 +45,20 @@ sim_generator = function(N, I) {
   ID = rep(1:I, each = length(D))
   
   b_alpha_Intercept = rnorm(1, 100, 20)
-  b_beta_Intercept = rlnorm(1, -2, .5)
+  b_beta_Intercept = rlnorm(1, -3, .5) # positive slope mean = .05, sd = .03
   b_NEC_Intercept = runif(1, 0, 100)
   sigma = rexp(1, 1)
   sd_ID__alpha_Intercept = rexp(1, 1)
   sd_ID__beta_Intercept = rexp(1, 1)
   sd_ID__NEC_Intercept = rexp(1, 1)
-  cor_ID__alpha_Intercept__beta_Intercept = runif(1, -1, 1)
-  cor_ID__alpha_Intercept__NEC_Intercept = runif(1, -1, 1)
-  cor_ID__beta_Intercept__NEC_Intercept = runif(1, -1, 1)
+  
+  # Sample from lkj(4) for a 3x3 correlation matrix
+  cor_mat = rethinking::rlkjcorr(1, eta = 4, K = 3)
+  
+  # Plug in correlations
+  cor_ID__alpha_Intercept__beta_Intercept = cor_mat[2,1]
+  cor_ID__alpha_Intercept__NEC_Intercept = cor_mat[3,1]
+  cor_ID__beta_Intercept__NEC_Intercept = cor_mat[2,3]
   
   r_ID__alpha = matrix(rnorm(I, 0, sd_ID__alpha_Intercept), 
                        nrow = I, ncol = 1,
