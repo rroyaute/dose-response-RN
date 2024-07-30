@@ -24,9 +24,9 @@ options(SBC.min_chunk_size = 5)
 
 # Setup caching of results
 if(use_cmdstanr) {
-  cache_dir <- "./_brms_SBC_cache"
+  cache_dir <- "./_SBC_cache_DR_RN"
 } else { 
-  cache_dir <- "./_brms_rstan_SBC_cache"
+  cache_dir <- "./_SBC_cache_DR_RN_rstan"
 }
 if(!dir.exists(cache_dir)) {
   dir.create(cache_dir)
@@ -45,7 +45,7 @@ sim_generator = function(N, I) {
   ID = rep(1:I, each = length(D))
   
   b_alpha_Intercept = rnorm(1, 100, 20)
-  b_beta_Intercept = rlnorm(1, -3, .5) # positive slope mean = .05, sd = .03
+  b_beta_Intercept = rexp(1, 10) # positive slope mean = .1, sd = .1
   b_NEC_Intercept = runif(1, 0, 100)
   sigma = rexp(1, 1)
   sd_ID__alpha_Intercept = rexp(1, 1)
@@ -89,7 +89,10 @@ sim_generator = function(N, I) {
       cor_ID__alpha_Intercept__beta_Intercept = cor_ID__alpha_Intercept__beta_Intercept,
       cor_ID__alpha_Intercept__NEC_Intercept = cor_ID__alpha_Intercept__NEC_Intercept,
       cor_ID__beta_Intercept__NEC_Intercept = cor_ID__beta_Intercept__NEC_Intercept,
-      sigma = sigma
+      sigma = sigma#,
+      # r_ID__alpha = r_ID__alpha,
+      # r_ID__beta_Intercept = r_ID__beta_Intercept,
+      # r_ID__NEC_Intercept = r_ID__NEC_Intercept
     ),
     generated = data.frame(y = y, Dose = Dose, ID = ID)
   )
@@ -131,12 +134,15 @@ bf.vi = bf(y ~ log(alpha) - beta * (Dose - NEC) * (Dose > NEC),
 
 backend_func <- SBC_backend_brms(bf.vi,  
                                  prior = priors.vi.2, 
+                                 control = list(adapt_delta = .95,
+                                                max_treedepth = 12),
                                  chains = 1,
                                  template_data = datasets_func$generated[[1]],
                                  out_stan_file = file.path(cache_dir, "brms_NEC_vi.stan"))
 
-results_func <- compute_SBC(datasets_func, backend_func, 
-                            dquants = log_lik_dq_func, 
+results_func <- compute_SBC(datasets_func, 
+                            backend_func, 
+                            # dquants = log_lik_dq_func,
                             cache_mode = "results", 
                             cache_location = file.path(cache_dir, "func"))
 plot_rank_hist(results_func)
