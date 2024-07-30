@@ -98,7 +98,12 @@ sim_generator = function(N, I) {
 n_sims_generator = SBC_generator_function(sim_generator, N = N, I = I)
 
 log_lik_dq_func <- derived_quantities(
-  log_lik = sum(dnorm(y, b_Intercept + x * b_x + r_group[group], sigma, log = TRUE))
+  log_lik = sum(dnorm(y, 
+                      log(b_alpha_Intercept + r_ID__alpha[ID]) - 
+                        (b_beta_Intercept + r_ID__beta_Intercept[ID]) * 
+                        (Dose - (b_NEC_Intercept + r_ID__NEC_Intercept[ID])) * 
+                        (Dose > (b_NEC_Intercept + r_ID__NEC_Intercept[ID])), 
+                      sigma, log = TRUE))
   # Testing CRPS, probably not worth it
   #, CRPS = mean(scoringRules::crps_norm(y, b_Intercept + x * b_x + r_group[group], sigma))
 )
