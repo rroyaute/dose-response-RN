@@ -7,4 +7,6 @@
 
 *.DS_Store
 
-/*_cache/
+*_cache
+/_brms_SBC_cache
+/_SBC_cache_DR_RN_rstan
