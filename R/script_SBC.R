@@ -4,7 +4,8 @@ library(patchwork); library(SBC); library(future)
 bayesplot::color_scheme_set("darkgray")
 theme_set(theme_bw(14))
 
-use_cmdstanr <- getOption("SBC.vignettes_cmdstanr", TRUE) # Set to false to use rstan instead
+# use_cmdstanr <- getOption("SBC.vignettes_cmdstanr", TRUE) # Set to false to use rstan instead
+use_cmdstanr <- getOption("SBC.vignettes_cmdstanr", FALSE) # Set to false to use rstan instead
 
 if(use_cmdstanr) {
   options(brms.backend = "cmdstanr")
@@ -91,8 +92,14 @@ sim_generator = function(N, I) {
 
 n_sims_generator = SBC_generator_function(sim_generator, N = N, I = I)
 
+log_lik_dq_func <- derived_quantities(
+  log_lik = sum(dnorm(y, b_Intercept + x * b_x + r_group[group], sigma, log = TRUE))
+  # Testing CRPS, probably not worth it
+  #, CRPS = mean(scoringRules::crps_norm(y, b_Intercept + x * b_x + r_group[group], sigma))
+)
+
 set.seed(12239755)
-datasets_func = generate_datasets(n_sims_generator, 10)
+datasets_func = generate_datasets(n_sims_generator, 100)
 
 priors.vi.2 = 
   # Intercept priors
@@ -119,8 +126,11 @@ backend_func <- SBC_backend_brms(bf.vi,
                                  out_stan_file = file.path(cache_dir, "brms_NEC_vi.stan"))
 
 results_func <- compute_SBC(datasets_func, backend_func, 
-                            # dquants = log_lik_dq_func, 
+                            dquants = log_lik_dq_func, 
                             cache_mode = "results", 
                             cache_location = file.path(cache_dir, "func"))
 plot_rank_hist(results_func)
 plot_ecdf_diff(results_func)
+plot_coverage(results_func)
+plot_coverage_diff(results_func)
+plot_sim_estimated(results_func, alpha = 0.5)
