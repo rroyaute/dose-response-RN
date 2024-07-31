@@ -48,9 +48,9 @@ sim_generator = function(N, I) {
   b_beta_Intercept = rexp(1, 10) # positive slope mean = .1, sd = .1
   b_NEC_Intercept = runif(1, 0, 100)
   sigma = rexp(1, 1)
-  sd_ID__alpha_Intercept = rexp(1, 1)
-  sd_ID__beta_Intercept = rexp(1, 1)
-  sd_ID__NEC_Intercept = rexp(1, 1)
+  sd_ID__alpha_Intercept = rexp(1, .05)
+  sd_ID__beta_Intercept = rexp(1, 5)
+  sd_ID__NEC_Intercept = rexp(1, .1)
   
   # Sample from lkj(4) for a 3x3 correlation matrix
   cor_mat = rethinking::rlkjcorr(1, eta = 4, K = 3)
@@ -119,10 +119,10 @@ priors.vi.2 =
   prior(normal(100, 20), nlpar = alpha, class = b, lb = 0) +
   prior(exponential(10), nlpar = beta, class = b, lb = 0) +
   prior(uniform(0, 100), nlpar = NEC, class = b, lb = 0, ub = 100) + 
-  # Random effects priors
-  prior(exponential(1), nlpar = alpha, class = sd, group = ID) +
-  prior(exponential(1), nlpar = beta, class = sd, group = ID) +
-  prior(exponential(1), nlpar = NEC, class = sd, group = ID) +
+  # Random effects priors (Weakly informative ~ 20 % of mean parameter)
+  prior(exponential(.05), nlpar = alpha, class = sd, group = ID) +
+  prior(exponential(5), nlpar = beta, class = sd, group = ID) +
+  prior(exponential(.1), nlpar = NEC, class = sd, group = ID) +
   # Residual prior
   prior(exponential(1), class = sigma) +
   prior(lkj(4), class = cor)
@@ -136,7 +136,7 @@ backend_func <- SBC_backend_brms(bf.vi,
                                  prior = priors.vi.2, 
                                  control = list(adapt_delta = .95,
                                                 max_treedepth = 12),
-                                 chains = 1,
+                                 chains = 4,
                                  template_data = datasets_func$generated[[1]],
                                  out_stan_file = file.path(cache_dir, "brms_NEC_vi.stan"))
 
