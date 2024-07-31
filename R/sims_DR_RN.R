@@ -39,31 +39,37 @@ df %>%
 # 2. Simulations using a lognormal likelihood ----
 DR_fun_log = function(Dose, alpha , beta, NEC){
   log_yhat = ifelse(Dose < NEC, log(alpha), 
-                    log(alpha) - beta * (Dose - NEC))
+                    log(alpha) - exp(beta) * (Dose - NEC))
   return(log_yhat)
 }
 
 DR_fun_log_exp = function(Dose, alpha , beta, NEC){
   log_yhat = ifelse(Dose < NEC, log(alpha), 
-                    log(alpha) - beta * (Dose - NEC))
+                    log(alpha) - exp(beta) * (Dose - NEC))
   yhat = exp(log_yhat)
   return(yhat)
 }
 
-plot(Dose, exp(DR_fun_log(Dose, alpha , beta, NEC)))
+plot(Dose, exp(DR_fun_log(Dose, alpha , log(beta), NEC)))
+plot(Dose, DR_fun_log_exp(Dose, alpha , log(beta), NEC))
 
 sigma = .08
+# Test other sigma values
+# sigma = 1
+sigma = .5
+sigma = .25
+
 
 set.seed(42)
 df = crossing(rep = 1:nreps, Dose) %>% 
-  mutate(log_yhat = DR_fun_log(Dose, alpha, beta, NEC)) %>% 
+  mutate(log_yhat = DR_fun_log(Dose, alpha, log(beta), NEC)) %>% 
   mutate(y = rlnorm(n(), log_yhat, sigma))
 df %>% 
   ggplot(aes(y = y, x = Dose)) +
   geom_point(alpha = .2, size = 2.5) +
   geom_function(fun = DR_fun_log_exp, 
                 args = list(alpha = alpha, 
-                            beta = beta, 
+                            beta = log(beta), 
                             NEC = NEC),
                 color = "red", size = 1) +
   # ylim(0, 100) +
@@ -294,43 +300,6 @@ brm.vi.prior
 # pp_check(brm.vi.prior, ndraws = 100)
 conditional_effects(brm.vi.prior)
 
-## 4.3.3 With the individual model - no correlation ----
-brm.vi.nocorr.prior = brm(data = df, 
-                          bf.vi.nocorr, 
-                          backend = "cmdstan",
-                          prior = priors.vi.nocorr, 
-                          sample_prior = "only", 
-                          file_refit = "always",
-                          save_pars = save_pars(all = TRUE),
-                          seed = 42, 
-                          cores = 4,
-                          threads = 3,
-                          control = list(adapt_delta = .95,
-                                         max_treedepth = 12), 
-                          file = "mods/brm.vi.nocorr.prior")
-brm.vi.nocorr.prior
-# pp_check(brm.vi.nocorr.prior, ndraws = 100)
-conditional_effects(brm.vi.nocorr.prior, re_formula = NULL)
-
-
-## 4.3.4 With the individual model - NEC only ----
-brm.vi.NEC.prior = brm(data = df, 
-                       bf.vi.NEC, 
-                       backend = "cmdstan",
-                       prior = priors.vi.NEC, 
-                       sample_prior = "only", 
-                       file_refit = "always",
-                       save_pars = save_pars(all = TRUE),
-                       seed = 42, 
-                       cores = 4,
-                       threads = 3,
-                       control = list(adapt_delta = .95,
-                                      max_treedepth = 12), 
-                       file = "mods/brm.vi.NEC.prior")
-brm.vi.NEC.prior
-# pp_check(brm.vi.NEC.prior, ndraws = 100)
-conditional_effects(brm.vi.NEC.prior, re_formula = NULL)
-
 ## 4.4 Fitting to data ----
 ## 4.4.1 With the population model ----
 brm.pop= brm(data = df, 
@@ -368,43 +337,6 @@ brm.vi
 pp_check(brm.vi, ndraws = 100)
 conditional_effects(brm.vi, re_formula = NULL)
 conditional_effects(brm.vi, re_formula = NULL, spaghetti = T, ndraws = 100)
-
-
-## 4.4.3 With the individual model - no correlation ----
-brm.vi.nocorr = brm(data = df, 
-                    bf.vi.nocorr, 
-                    backend = "cmdstan",
-                    prior = priors.vi.nocorr, 
-                    sample_prior = "yes", 
-                    file_refit = "always",
-                    save_pars = save_pars(all = TRUE),
-                    seed = 42, 
-                    cores = 4,
-                    threads = 3,
-                    control = list(adapt_delta = .95,
-                                   max_treedepth = 12), 
-                    file = "mods/brm.vi.nocorr")
-brm.vi.nocorr
-pp_check(brm.vi.nocorr, ndraws = 100)
-conditional_effects(brm.vi.nocorr, re_formula = NULL)
-
-## 4.4.4 With the individual model - NEC only ----
-brm.vi.NEC = brm(data = df, 
-                       bf.vi.NEC, 
-                       backend = "cmdstan",
-                       prior = priors.vi.NEC, 
-                       sample_prior = "yes", 
-                       file_refit = "always",
-                       save_pars = save_pars(all = TRUE),
-                       seed = 42, 
-                       cores = 4,
-                       threads = 3,
-                       control = list(adapt_delta = .95,
-                                      max_treedepth = 12), 
-                       file = "mods/brm.vi.NEC")
-brm.vi.NEC
-pp_check(brm.vi.NEC, ndraws = 100)
-conditional_effects(brm.vi.NEC, re_formula = NULL)
 
 
 # 5. Plot individual tendencies -----
@@ -531,3 +463,267 @@ alpha_dist + dcorr1 + dcorr2 +
   corr1 + beta_dist + dcorr3 +
   corr2 + corr3 + NEC_dist +
   plot_layout(ncol = 3, nrow = 3, byrow = T)
+
+
+# 6. Step-by-step model building ---
+## 6.1 Population model with exp(beta) to constrain positive slopes ----
+bf.pop = bf(y ~ log(alpha) - exp(beta) * (Dose - NEC) * (Dose > NEC), 
+            alpha + beta + NEC ~ 1, 
+            nl = T, 
+            family = lognormal)
+priors.pop = 
+  # Intercept priors
+  prior(normal(100, 5), nlpar = alpha, class = b, lb = 0) +
+  prior(normal(-3, .1), nlpar = beta, class = b) +
+  # prior(uniform(0, 100), nlpar = NEC, class = b, lb = 0, ub = 100) +
+  prior(normal(50, 20), nlpar = NEC, class = b, lb = 0, ub = 100) +
+  # Residual prior
+  prior(exponential(50), class = sigma)
+
+brm.pop.prior= brm(data = df, 
+                   bf.pop, 
+                   backend = "cmdstan",
+                   prior = priors.pop, 
+                   sample_prior = "only", 
+                   file_refit = "always",
+                   save_pars = save_pars(all = TRUE),
+                   seed = 42, 
+                   file = "mods/brm.pop.prior")
+
+brm.pop.prior
+pp_check(brm.pop.prior, ndraws = 100)
+conditional_effects(brm.pop.prior)
+
+## 6.2 Individual model with alpha only ----
+bf.vi.alpha = bf(y ~ log(alpha) - exp(beta) * (Dose - NEC) * (Dose > NEC), 
+                 alpha ~ 1 + (1|ID),
+                 beta + NEC ~ 1, 
+                 nl = T, 
+                 family = lognormal)
+priors.vi.alpha = 
+  # Intercept priors
+  prior(normal(100, 5), nlpar = alpha, class = b, lb = 0) +
+  prior(normal(-3, .1), nlpar = beta, class = b) +
+  prior(normal(50, 20), nlpar = NEC, class = b, lb = 0, ub = 100) +
+  # Random effects priors
+  prior(exponential(.1), nlpar = alpha, class = sd, group = ID, ub = 100) +
+  # Residual prior
+  prior(exponential(50), class = sigma)
+
+brm.vi.alpha.prior= brm(data = df, 
+                        bf.vi.alpha, 
+                        backend = "cmdstan",
+                        prior = priors.vi.alpha, 
+                        sample_prior = "only", 
+                        file_refit = "always",
+                        save_pars = save_pars(all = TRUE),
+                        seed = 42, 
+                        file = "mods/brm.vi.alpha.prior")
+
+brm.vi.alpha.prior
+pp_check(brm.vi.alpha.prior, ndraws = 100)
+conditional_effects(brm.vi.alpha.prior)
+conditional_effects(brm.vi.alpha.prior, re_formula = NULL)
+plot(brm.vi.alpha.prior)
+
+## 6.3 Individual model with beta only ----
+bf.vi.beta = bf(y ~ log(alpha) - exp(beta) * (Dose - NEC) * (Dose > NEC), 
+                beta ~ 1 + (1|ID),
+                alpha + NEC ~ 1, 
+                nl = T, 
+                family = lognormal)
+priors.vi.beta = 
+  # Intercept priors
+  prior(normal(100, 5), nlpar = alpha, class = b, lb = 0) +
+  prior(normal(-3, .1), nlpar = beta, class = b) +
+  # prior(uniform(0, 100), nlpar = NEC, class = b, lb = 0, ub = 100) +
+  prior(normal(50, 20), nlpar = NEC, class = b, lb = 0, ub = 100) +
+  # Random effects priors
+  prior(exponential(1), nlpar = beta, class = sd, group = ID) +
+  # Residual prior
+  prior(exponential(50), class = sigma)
+
+brm.vi.beta.prior= brm(data = df, 
+                       bf.vi.beta, 
+                       backend = "cmdstan",
+                       prior = priors.vi.beta, 
+                       sample_prior = "only", 
+                       file_refit = "always",
+                       save_pars = save_pars(all = TRUE),
+                       seed = 42, 
+                       file = "mods/brm.vi.beta.prior")
+
+brm.vi.beta.prior
+pp_check(brm.vi.beta.prior, ndraws = 100)
+conditional_effects(brm.vi.beta.prior)
+conditional_effects(brm.vi.beta.prior, re_formula = NULL)
+conditional_effects(brm.vi.beta.prior, re_formula = NULL, spaghetti = T, ndraws = 100)
+plot(brm.vi.beta.prior)
+
+## 6.4 Individual model with NEC only ----
+bf.vi.NEC = bf(y ~ log(alpha) - exp(beta) * (Dose - NEC) * (Dose > NEC), 
+               NEC ~ 1 + (1|ID),
+               alpha + beta ~ 1, 
+               nl = T, 
+               family = lognormal)
+priors.vi.NEC = 
+  # Intercept priors
+  prior(normal(100, 5), nlpar = alpha, class = b, lb = 0) +
+  prior(normal(-3, .1), nlpar = beta, class = b) +
+  prior(normal(50, 20), nlpar = NEC, class = b, lb = 0, ub = 100) +
+  # Random effects priors
+  prior(exponential(.1), nlpar = NEC, class = sd, group = ID, ub = 50) +
+  # Residual prior
+  prior(exponential(50), class = sigma)
+
+brm.vi.NEC.prior= brm(data = df, 
+                      bf.vi.NEC, 
+                      backend = "cmdstan",
+                      prior = priors.vi.NEC, 
+                      sample_prior = "only", 
+                      file_refit = "always",
+                      save_pars = save_pars(all = TRUE),
+                      seed = 42, 
+                      file = "mods/brm.vi.NEC.prior")
+
+brm.vi.NEC.prior
+pp_check(brm.vi.NEC.prior, ndraws = 100)
+conditional_effects(brm.vi.NEC.prior)
+conditional_effects(brm.vi.NEC.prior, re_formula = NULL)
+conditional_effects(brm.vi.NEC.prior, re_formula = NULL, spaghetti = T, ndraws = 100)
+plot(brm.vi.NEC.prior)
+
+## 6.4 Individual model with all varying parameters (no correlation) ----
+bf.vi.nocorr = bf(y ~ log(alpha) - exp(beta) * (Dose - NEC) * (Dose > NEC), 
+                  alpha + beta + NEC ~ 1 + (1||ID),
+                  nl = T, 
+                  family = lognormal)
+priors.vi.nocorr = 
+  # Intercept priors
+  prior(normal(100, 5), nlpar = alpha, class = b, lb = 0) +
+  prior(normal(-3, .1), nlpar = beta, class = b) +
+  prior(normal(50, 20), nlpar = NEC, class = b, lb = 0, ub = 100) +
+  # Random effects priors
+  prior(exponential(.1), nlpar = alpha, class = sd, group = ID, ub = 100) +
+  prior(exponential(1), nlpar = beta, class = sd, group = ID) +
+  prior(exponential(.1), nlpar = NEC, class = sd, group = ID, ub = 50) +
+  # Residual prior
+  prior(exponential(50), class = sigma)
+
+brm.vi.nocorr.prior= brm(data = df, 
+                         bf.vi.nocorr, 
+                         backend = "cmdstan",
+                         prior = priors.vi.nocorr, 
+                         sample_prior = "only", 
+                         file_refit = "always",
+                         save_pars = save_pars(all = TRUE),
+                         seed = 42, 
+                         file = "mods/brm.vi.nocorr.prior")
+
+brm.vi.nocorr.prior
+pp_check(brm.vi.nocorr.prior, ndraws = 100)
+conditional_effects(brm.vi.nocorr.prior)
+conditional_effects(brm.vi.nocorr.prior, re_formula = NULL)
+conditional_effects(brm.vi.nocorr.prior, re_formula = NULL, spaghetti = T, ndraws = 100)
+plot(brm.vi.nocorr.prior, ask = FALSE)
+
+
+## 6.5 Individual model with all varying parameters (no correlation) ----
+bf.vi = bf(y ~ log(alpha) - exp(beta) * (Dose - NEC) * (Dose > NEC), 
+           alpha + beta + NEC ~ 1 + (1|c|ID),
+           nl = T, 
+           family = lognormal)
+priors.vi = 
+  # Intercept priors
+  prior(normal(100, 5), nlpar = alpha, class = b, lb = 0) +
+  prior(normal(-3, .1), nlpar = beta, class = b) +
+  prior(normal(50, 20), nlpar = NEC, class = b, lb = 0, ub = 100) +
+  # Random effects priors
+  prior(exponential(.1), nlpar = alpha, class = sd, group = ID) +
+  prior(exponential(1), nlpar = beta, class = sd, group = ID) +
+  prior(exponential(.1), nlpar = NEC, class = sd, group = ID) +
+  # Residual prior
+  prior(exponential(50), class = sigma) +
+  prior(lkj(4), class = cor)
+
+brm.vi.prior= brm(data = df, 
+                  bf.vi, 
+                  backend = "cmdstan",
+                  prior = priors.vi, 
+                  sample_prior = "only", 
+                  file_refit = "always",
+                  save_pars = save_pars(all = TRUE),
+                  seed = 42, 
+                  file = "mods/brm.vi.prior")
+
+brm.vi.prior
+pp_check(brm.vi.prior, ndraws = 100)
+conditional_effects(brm.vi.prior)
+conditional_effects(brm.vi.prior, re_formula = NULL)
+conditional_effects(brm.vi.prior, re_formula = NULL, spaghetti = T, ndraws = 100)
+plot(brm.vi.prior, ask = FALSE)
+
+brm.vi.prior %>%
+  spread_draws(b_alpha_Intercept, r_ID__alpha[ID,]) %>%
+  mutate(alpha_i = b_alpha_Intercept + r_ID__alpha) %>% 
+  median_qi(alpha_i, .width = c(.95, .66)) %>% 
+  ggplot(aes(y = ID, x = alpha_i, xmin = .lower, xmax = .upper)) +
+  geom_pointinterval()
+
+brm.vi.prior %>%
+  spread_draws(b_beta_Intercept, r_ID__beta[ID,]) %>%
+  mutate(beta_i = exp(b_beta_Intercept + r_ID__beta)) %>% 
+  median_qi(beta_i, .width = c(.95, .66)) %>% 
+  ggplot(aes(y = ID, x = beta_i, xmin = .lower, xmax = .upper)) +
+  geom_pointinterval()
+
+brm.vi.prior %>%
+  spread_draws(b_NEC_Intercept, r_ID__NEC[ID,]) %>%
+  mutate(NEC_i = b_NEC_Intercept + r_ID__NEC) %>% 
+  median_qi(NEC_i, .width = c(.95, .66)) %>% 
+  ggplot(aes(y = ID, x = NEC_i, xmin = .lower, xmax = .upper)) +
+  geom_pointinterval()
+
+
+# 7. Refit to data ----
+brm.vi= brm(data = df, 
+            bf.vi, 
+            backend = "cmdstan",
+            prior = priors.vi, 
+            sample_prior = "yes", 
+            file_refit = "always",
+            save_pars = save_pars(all = TRUE),
+            seed = 42, 
+            cores = 4,
+            threads = 3,
+            control = list(adapt_delta = .95,
+                           max_treedepth = 12), 
+            file = "mods/brm.vi")
+
+brm.vi
+pp_check(brm.vi, ndraws = 100)
+conditional_effects(brm.vi)
+conditional_effects(brm.vi, re_formula = NULL)
+conditional_effects(brm.vi, re_formula = NULL, spaghetti = T, ndraws = 100)
+plot(brm.vi, ask = FALSE)
+
+brm.vi %>%
+  spread_draws(b_alpha_Intercept, r_ID__alpha[ID,]) %>%
+  mutate(alpha_i = b_alpha_Intercept + r_ID__alpha) %>% 
+  median_qi(alpha_i, .width = c(.95, .66)) %>% 
+  ggplot(aes(y = ID, x = alpha_i, xmin = .lower, xmax = .upper)) +
+  geom_pointinterval()
+
+brm.vi %>%
+  spread_draws(b_beta_Intercept, r_ID__beta[ID,]) %>%
+  mutate(beta_i = exp(b_beta_Intercept + r_ID__beta)) %>% 
+  median_qi(beta_i, .width = c(.95, .66)) %>% 
+  ggplot(aes(y = ID, x = beta_i, xmin = .lower, xmax = .upper)) +
+  geom_pointinterval()
+
+brm.vi %>%
+  spread_draws(b_NEC_Intercept, r_ID__NEC[ID,]) %>%
+  mutate(NEC_i = b_NEC_Intercept + r_ID__NEC) %>% 
+  median_qi(NEC_i, .width = c(.95, .66)) %>% 
+  ggplot(aes(y = ID, x = NEC_i, xmin = .lower, xmax = .upper)) +
+  geom_pointinterval()
