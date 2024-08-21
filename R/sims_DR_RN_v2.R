@@ -362,3 +362,87 @@ NEC_dist = re %>%
   labs(x = expression(NEC), y = "") +
   theme_bw(12) +
   theme(aspect.ratio=1)
+
+# Consequence of ignoring individual variation ----
+### Define formula ---- 
+bf.pop = bf(y  ~ Rmin + (Rmax - Rmin) * exp(-exp(beta) * (Dose - NEC) * (Dose > NEC)), 
+            Rmin + Rmax + beta + NEC ~ 1, 
+            family = lognormal,
+            nl = T)
+bf.vi = bf(y  ~ Rmin + (Rmax - Rmin) * exp(-exp(beta) * (Dose - NEC) * (Dose > NEC)), 
+           Rmin  + beta ~ 1,
+           Rmax + NEC ~ 1 + (1|ID),
+           family = lognormal,
+           nl = T)
+
+
+
+### Set priors ----
+lb_R = quantile(df.vi$y, probs = .1)
+ub_R = quantile(df.vi$y, probs = .9)
+sd_y = sd(df.vi$y)
+sd_Dose = sd(df.vi$Dose)
+sd_y_prior = 2.5 * sd_y
+sd_Dose_prior = 2.5 * sd_Dose
+
+priors.pop = 
+  # Intercept priors (50 % variation around mean value)
+  prior(normal(1.824934, 0.912467), nlpar = Rmin, class = b, lb = 0, ub = 4.671519) +
+  prior(normal(4.648762, 2.324381), nlpar = Rmax, class = b, lb = 0, ub = 4.671519) +
+  prior(normal(0, .5), nlpar = beta, class = b) +
+  prior(normal(50, 25), nlpar = NEC, class = b, lb = 0, ub = 100) + # Residual prior
+  prior(exponential(10), class = sigma)
+
+priors.vi = 
+  # Intercept priors (50 % variation around mean value)
+  prior(normal(1.824934, 0.912467), nlpar = Rmin, class = b, lb = 0, ub = 4.671519) +
+  prior(normal(4.648762, 2.324381), nlpar = Rmax, class = b, lb = 0, ub = 4.671519) +
+  prior(normal(0, .5), nlpar = beta, class = b) +
+  prior(normal(50, 25), nlpar = NEC, class = b, lb = 0, ub = 100) + # Residual prior
+  # Random effects priors
+  prior(exponential(1), nlpar = NEC, class = sd, group = ID) +
+  prior(exponential(1), nlpar = Rmax, class = sd, group = ID) +
+  # Residual prior
+  prior(exponential(10), class = sigma)
+
+
+### Fit population model to individual-difference data simulation ----
+brm.pop.vi = brm(data = df.vi, 
+             bf.pop,
+             backend = "cmdstan",
+             prior = priors.pop,
+             file_refit = "always",
+             save_pars = save_pars(all = TRUE),
+             warmup = 4000,
+             iter = 5000,
+             seed = 42,
+             cores = 4,
+             threads = 3,
+             control = list(adapt_delta = .95,
+                            max_treedepth = 12),
+             stan_model_args=list(stanc_options = list("O1")))
+brm.pop.vi
+pp_check(brm.pop.vi, ndraws = 100)
+plot(conditional_effects(brm.pop.vi), points = T)
+conditional_effects(brm.pop.vi, re_formula = NULL, 
+                    spaghetti = T, ndraws = 200)
+
+brm.vi = brm(data = df.vi, 
+                 bf.vi,
+                 backend = "cmdstan",
+                 prior = priors.pop,
+                 file_refit = "always",
+                 save_pars = save_pars(all = TRUE),
+                 warmup = 4000,
+                 iter = 5000,
+                 seed = 42,
+                 cores = 4,
+                 threads = 3,
+                 control = list(adapt_delta = .95,
+                                max_treedepth = 12),
+                 stan_model_args=list(stanc_options = list("O1")))
+brm.vi
+pp_check(brm.vi, ndraws = 100)
+plot(conditional_effects(brm.vi, re_formula = NULL), points = T)
+conditional_effects(brm.vi, re_formula = NULL, 
+                    spaghetti = T, ndraws = 200)
