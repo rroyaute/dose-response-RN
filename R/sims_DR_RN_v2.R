@@ -161,7 +161,7 @@ plot(conditional_effects(brm.pop), points = T)
 conditional_effects(brm.pop, spaghetti = T, ndraws = 200)
 
 # Simulate individual differences in NEC ----
-Rmin = 0
+Rmin = 1
 Rmax = 100
 beta = -4.5
 Dose = seq(0, 100, by = 10)
@@ -187,7 +187,7 @@ set.seed(42)
 df.vi = ID %>%
   expand(nesting(ID, Rmax_i, NEC_i), 
          Dose = Dose) %>%
-  mutate(yhat = DR_logRN_fun(Dose, Rmin, log(Rmax_i), beta, NEC_i)) %>% 
+  mutate(yhat = DR_logRN_fun(Dose, log(Rmin), log(Rmax_i), beta, NEC_i)) %>% 
   mutate(y = rlnorm(n(), log(yhat), sigma))
 
 fig = df.vi %>% 
@@ -197,7 +197,7 @@ fig = df.vi %>%
   map(1:n_id, ~geom_function(
     fun = DR_logRN_fun,
     args = list(
-      Rmax = Rmin,
+      Rmax = log(Rmin),
       Rmax = log(ID$Rmax_i[.x]),
       beta = beta,
       NEC = ID$NEC_i[.x]),
@@ -205,7 +205,7 @@ fig = df.vi %>%
     size = .8)) +
   # Add population average trend
   geom_function(fun = DR_logRN_fun, 
-                args = list(Rmin = Rmin, 
+                args = list(Rmin = log(Rmin), 
                             Rmax = log(Rmax), 
                             beta = beta, 
                             NEC = NEC),
