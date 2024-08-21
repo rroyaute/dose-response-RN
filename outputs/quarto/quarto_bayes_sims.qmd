@@ -1,0 +1,106 @@
+---
+title: "Simulation workflow for the analysis of dose-response models with individual variation"
+format: 
+  html:
+    toc: true
+editor: source
+---
+
+```{r}
+library(here)
+library(targets)
+library(stantargets)
+tar_unscript()
+```
+
+This notebook shows how the analytic pipeline for data simulation is setup using the `{targets}` and `{stantargets}` packages.
+
+## Problem description and model specification
+Phenotypic variation is common in biology, yet is poorly accounted for in ecotoxicology and environmental risk assessment. When variation is ignored, this may lead to decision that do not protect the most sensitive individuals in a population. The following study attempts to answer the following fundamental questions:
+
+1. What is the risk of ignoring biological variation when estimating ecotoxicological parameters?
+1. What are optimal designs and sample sizes for estimating among-individual or among-genotype variation?
+
+To answer (1), we run a simulation study where we compare the estimation of ecotoxicological parameters while varying the magnitude of among-genotype differences. To answer (2), we simulate data with increased sample sizes and / or different experimental designs to determine which design yields the best estimation of among-individual differences in ecotoxicological parameters
+
+## A hierarchical dose-response model for capturing heterogeneous responses to contaminant exposure
+
+We chose a common dose-response model where a biological response $R$ remains unchanged while the contaminant dose remains below a No Effect Concentration (NEC). As soon as the dose falls above the NEC, the response declines at an exponential rate $-e^{\beta}$ until it reaches a lower bound $R_{min}$. 
+
+$$
+R = R_{min} + (R_{max} - R_{min}) e^{-e^{\beta \times (Dose - NEC) \times (Dose > NEC)}}
+$$
+We assume the response is positive with an average value $R_{max} = 100$ and a lower bound $R_{min} = 1$. We then assume that we are able to observe the response of 20 distinct genotypes each varying in their sensitivity to the contaminant. This means that each genotype can have a unique value for the parameters $R_{max}$, $NEC$ and $\beta$. For simplicity, we assume that the lower bound $R_{min}$ is shared among all genotypes.
+
+The model can therefore be rewritten as a hierarchical model such that the average value of each genotype differs from the population average by a normally-distributed offset that depends on the amount of among-genotype variation. We use a lognormal likelihood to contrain the estimations to be stricly positive and use a Bayesian framework with weak priors to constrain the data around plausible values. The full model can thus be written as: 
+
+$$
+\begin{aligned}
+\large \text{Model Likelihood}\\
+\text{Average dose-response}\\
+
+R_{i} &\sim Lognormal(log(\mu_{i}), \sigma) \\
+
+log(\mu_{i}) &= log(R_{min_i}) + (log(R_{max_i}) - log(R_{min_i})) e^{-e^{\beta_i \times (Dose - NEC_i) \times (Dose > NEC_i)}} \\
+
+\text{Among-genotype variances}\\
+R_{min_i} &\sim N(\mu_{R_{min}}, \sigma_{R_{min}}) \\
+R_{max_i} &\sim N(\mu_{R_{max}}, \sigma_{R_{max}}) \\
+NEC_i &\sim N(\mu_{NEC}, \sigma_{NEC}) \\
+
+\large \text{Priors}\\
+\small \text{Values needed for reasonable priors}\\
+min_R &= quantile_{10}(R) \\
+max_R &= quantile_{90}(R) \\
+sd_{min_R} &= min_R \times 0.5 \\
+sd_{max_R} &= min_R \times 0.5 \\
+med_{NEC} &= median(Dose) \\
+sd_{NEC} &= med_{NEC} \times 0.5 \\
+
+\text{Population Intercepts}\\
+\mu_{R_{min}} &\sim N(log(min_R), sd_{min_R})) \\
+\mu_{R_{max}} &\sim N(log(max_R), sd_{max_R}) \\
+\mu_{NEC} &\sim N(med_{NEC}, sd_{NEC}) \\
+
+\text{Among-individual variances}\\
+\sigma_{R_{min}} &\sim Exp(1) \\
+\sigma_{R_{min}} &\sim Exp(1) \\
+\sigma_{R_{min}} &\sim Exp(1) \\
+
+\text{Residual variance}\\
+\sigma &\sim Exp(10) \\
+
+\end{aligned}
+$$
+
+
+## Simulation study setup
+With this general model, we will investigate three cases for which the presence of among-genotype variance can potentially bias our estimation of the population averages for the ecotoxicological parameters $\mu_{NEC}$ and $\mu_{\beta}$:
+
+- Case 1: Only the average response $R_{max}$ differs among genotypes
+- Case 2: Only the $NEC$ differs among genotypes
+- Case 3: Only the decay rate $\beta$ differs among genotypes
+- Case 4: All three parameters vary independently among genotypes
+- Case 5: All three parameters covary among genotypes
+
+In each case, we generate 1000 datasets by simulating from the model version including the among-genotype variation for the specific set of parameters under consideration. We compare the fit of a model ignoring individual difference with a correctly-specified model. We rely on the following metrics to assess our models performances:
+
+- % Bias: a metric indicating how far off our estimate is from the true parameter value and defined as the percent distance to the true value of the parameter $\frac{(\theta - \hat{\theta})}{\hat{\theta}} \times 100$ 
+- Precision: a metric indicating the agreement in parameter values for a given set of simulations and defined as the difference between the 25th and 75th quantiles for a given set of simulations $q_{sim_{25}} - q_{sim_{75}}$ 
+- RMSE: an additional metric for the distance between the true value and the model estimate, defined as the square root of average difference between the true value of the parameter and the posterior median estimated from the model $\sqrt{E(\theta - \hat{\theta})}$
+
+We also want to understand how strong these genotype differences need to be so that the estimation of ecotoxicological parameters is problematic when not explicitly modeled. We will therefore run each case with increasing values for the among-genotype parameters: $CV_i = [0, 1, 10, 20, 30, 40, 50]$, where $CV_i$ corresponds to the among-genotype coefficient of variation, calculated as $\sigma_{i_\theta} = CV_{i_\theta} \times \mu_{\theta}$. 
+
+
+## Building the simulation functions
+
+### Data generation
+
+### Target definitions
+
+### Pipeline inspection
+
+### Running the pipeline
+
+
+
