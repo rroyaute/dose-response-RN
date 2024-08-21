@@ -15,6 +15,23 @@ tar_unscript()
 
 This notebook shows how the analytic pipeline for data simulation is setup using the `{targets}` and `{stantargets}` packages.
 
+```{targets packages, tar_globals = TRUE}
+library(targets)
+library(stantargets)
+```
+
+```{targets settings, tar_globals = TRUE}
+tar_option_set(
+  packages = c("extraDistr", "tidyverse", "trialr"),
+  deployment = "main", # Set to "worker" in tar_stan_mcmc_rep_summary().
+  storage = "worker",
+  retrieval = "worker",
+  memory = "transient",
+  garbage_collection = TRUE
+)
+```
+
+
 ## Problem description and model specification
 Phenotypic variation is common in biology, yet is poorly accounted for in ecotoxicology and environmental risk assessment. When variation is ignored, this may lead to decision that do not protect the most sensitive individuals in a population. The following study attempts to answer the following fundamental questions:
 
@@ -92,13 +109,120 @@ In each case, we generate 1000 datasets by simulating from the model version inc
 We also want to understand how strong these genotype differences need to be so that the estimation of ecotoxicological parameters is problematic when not explicitly modeled. We will therefore run each case with increasing values for the among-genotype parameters: $CV_i = [0, 1, 10, 20, 30, 40, 50]$, where $CV_i$ corresponds to the among-genotype coefficient of variation, calculated as $\sigma_{i_\theta} = CV_{i_\theta} \times \mu_{\theta}$. 
 
 
-## Building the simulation functions
+## Constructing the pipeline
 
 ### Data generation
 
+```{targets data, tar_globals = TRUE}
+simulate_data <- function(n_patients = 50, n_visits = 3, n_arms = 2) {
+  structure <- tibble(patient = as.character(seq_len(n_patients))) %>%
+    mutate(arm = as.character(rep(seq_len(n_arms), each = n_patients / n_arms))) %>%
+    mutate(covariate1 = rnorm(n()), covariate2 = rnorm(n())) %>%
+    expand_grid(visit = as.character(seq_len(n_visits))) %>%
+    mutate(group = paste0(arm, visit))
+  x <- model.matrix(~ covariate1 + covariate2 + group, data = structure) %>%
+    as.matrix()
+  beta <- rnorm(n = ncol(x), mean = 0, sd = 2)
+  sigma <- NULL
+  while (is.null(sigma) || max(sigma) > 8) {
+    rho <- rlkjcorr(n = 1, K = n_visits, eta = 1)
+    lambda <- t(chol(rho))
+    sigma <- rhcauchy(n = n_visits, sigma = 1)
+    covariance <- diag(sigma) %*% rho %*% diag(sigma)
+  }
+  data <- structure %>%
+    mutate(x_beta = as.numeric(x %*% beta)) %>%
+    group_by(patient) %>%
+    mutate(response = MASS::mvrnorm(n = 1L, mu = x_beta, Sigma = covariance)) %>%
+    ungroup() %>%
+    select(response, arm, patient, visit, covariate1, covariate2, group)
+  which_missing <- sample.int(n = length(data$response), size = 5)
+  missing <- rep(0L, length(data$response))
+  missing[which_missing] <- 1L
+  data$response[which_missing] <- -99999
+  list(
+    data = data,
+    y = data$response,
+    x = x,
+    n_arms = n_arms,
+    n_beta = length(beta),
+    n_observations = n_patients * n_visits,
+    n_patients = n_patients,
+    n_visits = n_visits,
+    s_beta = 2,
+    s_sigma = 1,
+    missing = missing,
+    count_missing = cumsum(missing),
+    n_missing = sum(missing),
+    .join_data = list(
+      beta = beta,
+      sigma = sigma,
+      lambda = lambda
+    )
+  )
+}
+```
+
 ### Target definitions
 
+#### Fitting the model
+
+```{targets mcmc, tar_interactive = FALSE}
+tar_stan_mcmc_rep_summary(
+  name = mcmc,
+  stan_files = "model.stan",
+  data = simulate_data(), # Runs once per rep.
+  batches = 100, # Number of branch targets.
+  reps = 10, # Number of model reps per branch target.
+  chains = 4, # Number of MCMC chains.
+  parallel_chains = 4, # How many MCMC chains to run in parallel.
+  iter_warmup = 4e4, # Number of MCMC warmup iterations to run.
+  iter_sampling = 4e4, # Number of MCMC post-warmup iterations to run.
+  summaries = list(
+    # Compute posterior intervals at levels 50% and 95%.
+    # The 50% intervals should cover prior predictive parameter draws
+    # 50% of the time. The 95% intervals are similar.
+    # We also calculate posterior medians so we can compare them
+    # directly to the prior predictive draws.
+    ~posterior::quantile2(.x, probs = c(0.025, 0.25, 0.5, 0.75, 0.975)),
+    # We use Gelman-Rubin potential scale reduction factors to
+    # assess convergence:
+    rhat = ~posterior::rhat(.x)
+  ),
+  deployment = "worker"
+)
+```
+
+#### Model convergence
+
+```{targets convergence, tar_simple = TRUE}
+mcmc %>%
+  filter(!is.na(rhat) & rhat > 1.01) %>%
+  group_by(.rep) %>%
+  summarize(max_rhat = max(rhat), .groups = "drop") %>%
+  arrange(desc(max_rhat))
+```
+
+
+#### Model postprocessing
+
+```{targets coverage, tar_simple = TRUE}
+mcmc %>%
+  filter(!is.na(rhat), !grepl("lp__|y_missing", variable)) %>%
+  group_by(variable) %>%
+  summarize(
+    coverage_50 = mean(q25 < .join_data & .join_data < q75),
+    coverage_95 = mean(q2.5 < .join_data & .join_data < q97.5),
+    .groups = "drop"
+  )
+```
+
 ### Pipeline inspection
+
+```{r graph}
+tar_visnetwork()
+```
+
 
 ### Running the pipeline
 
