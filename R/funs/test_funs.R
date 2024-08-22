@@ -1,13 +1,16 @@
 # Test functions
 library(tidyverse)
 library(here)
+library(truncnorm)
 
 source(here("R/funs/script_funs.R"))
 
+# 1. Testing data_generator() function (passed)
 # Global test parameters
 I = 1000
 CVi = .5
-# Test vi_Rmax ----
+nsim = 100
+## Test vi_Rmax ----
 # Test case with extreme individual variation
 df = data_generator(ID_pars = "Rmax", CVi = CVi, I = I)
 vars = df$variables
@@ -36,7 +39,7 @@ sd_Rmax = sd(exp(vars$b_Rmax_Intercept + vars$r_ID__Rmax))
 CV = sd_Rmax / mu_Rmax * 100
 CV
 
-# Test vi_NEC ----
+## Test vi_NEC ----
 # Test case with extreme individual variation
 df = data_generator(ID_pars = "NEC", CVi = CVi, I = I)
 vars = df$variables
@@ -66,7 +69,7 @@ CV = sd_NEC / mu_NEC * 100
 CV
 
 
-# Test vi_beta ----
+## Test vi_beta ----
 # Test case with extreme individual variation
 df = data_generator(ID_pars = "beta", CVi = CVi, I = I)
 vars = df$variables
@@ -96,7 +99,7 @@ CV = sd_beta / mu_beta * 100
 CV
 
 
-# Test vi_all ----
+## Test vi_all ----
 # Test case with extreme individual variation
 df = data_generator(ID_pars = "all", CVi = CVi, I = I)
 vars = df$variables
@@ -138,4 +141,9 @@ sd_beta = sd(exp(vars$b_beta_Intercept + vars$r_ID__beta))
 CV = sd_beta / mu_beta * 100
 CV
 
+
+
+
+# 2. Testing n_sims_generator
+datasets_func = generate_datasets(n_sims_generator, n_sims = nsim) # passed
 
