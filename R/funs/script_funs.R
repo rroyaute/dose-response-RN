@@ -1,3 +1,7 @@
+library(tidyverse)
+library(brms)
+library(SBC)
+
 
 # Dose-response function on log(Response) scale ----
 DR_logRN_fun = function(Dose, Rmin, Rmax, beta, NEC){
@@ -104,17 +108,92 @@ data_generator = function(D = seq(0, 100, by = 10),
 }
 
 # Generate  n_sim datasets ----
+# Need to define 1 SBC_generator function for each simulations case
+n_sims_generator = SBC_generator_function(
+  data_generator,
+  D = seq(0, 100, by = 10),
+  I = 10,
+  CV = .05,
+  CVi = .1,
+  mu_pars = list(Rmin = log(1),
+                 Rmax = log(100),
+                 beta = -4.5,
+                 NEC = 10),
+  ID_pars = c("Rmax", "NEC", "beta", "all", "cov"))
 
-# n_sims_generator = SBC_generator_function(data_generator,
-#                                           D = seq(0, 100, by = 10), 
-#                                           I = 10, 
-#                                           CV = .05, 
-#                                           CVi = .1,
-#                                           mu_pars = list(Rmin = log(1), 
-#                                                          Rmax = log(100), 
-#                                                          beta = -4.5,
-#                                                          NEC = 10),
-#                                           ID_pars = c("Rmax", "NEC", "beta", "all", "cov"))
+# Function to store lists of datasets for all simulation cases ----
+data_sim_list_fun = function(n_sim = 100,
+                             n_id = 20){
+  # Simulation cases
+  case_list = list(n_sim = 1:n_sim,
+                   CVi = c(0, .1, .2, .3, .4, .5),
+                   case = c("Rmax", "NEC", "beta", "all"), # "cov" not yet implemented
+                   mod = c("pop", "vi")) 
+  data_list = list()
+  data_list_Rmax = list(case = list())
+  
+  for (j in 1:length(case_list$case)) {
+    for (i in 1:length(case_list$CVi)) {
+      data_list[i] = 
+      
+    }
+  }
+  
+  for (i in 1:length(case_list$CVi)) {
+    data_list_Rmax[i] = generate_datasets(
+      SBC_generator_function(
+        data_generator,
+        D = seq(0, 100, by = 10),
+        I = n_id,
+        CV = .05,
+        CVi = case_list$CVi[i],
+        mu_pars = list(Rmin = log(1),
+                       Rmax = log(100),
+                       beta = -4.5,
+                       NEC = 10),
+        ID_pars = case_list$case[1]), 
+      n_sims = n_sim)
+    names(data_list_Rmax[i]) = paste("CVi =", case_list$CVi[i])
+  }
+
+  
+    
+  )
+}
+
+
+
+
+
+
+datasets_list = list(
+  df_list_Rmax = list(
+    CVi.0 = datasets_func()
+      
+      generate_datasets(
+      n_sims_generator(ID_pars = case[1], I = n_id, CV = .05,
+                       CVi = CVi[1]), n_sims = n_sim)
+    
+    
+    
+  )
+)
+
+
+
+generate_datasets(
+  , 
+  n_sims = n_sims)
+
+
+datasets_func = generate_datasets(data_generator(), n_sims)
+
+data_list = list(
+  data_list_Rmax = generate_datasets(n_sims_generator, n_sims = n_sims)
+  
+  datasets_func$generated[[1]]
+)
+
 
 # Function to define priors to pass on to brms ----
 priors_func = function(mu_pars = c(Rmin = log(1), 
@@ -122,8 +201,7 @@ priors_func = function(mu_pars = c(Rmin = log(1),
                                    beta = -4.5,
                                    NEC = 10),
                        CV_prior = .5, 
-                       sigma = 1/10
-) {
+                       sigma = 1/10) {
   priors_pop = mu_pars
   priors_sd[1:3] = .5 # set sd to roughly correspond to 50 % variation on the natural scale for Rmin, Rmax & beta
   priors_sd[4] = abs(mu_pars[4]) * CV_prior
@@ -193,49 +271,7 @@ bf_list = list(
 
 
 # Function to fit the models to simulated data ----
-n_sim = 100
-n_id = 20
-CVi = c(0, .1, .2, .3, .4, .5)
-case = c("Rmax", "NEC", "beta", "all") # "cov" not yet implemented
-mod = c("pop", "vi")
 
-n_sims_generator = SBC_generator_function(f = data_generator,
-                       D = seq(0, 100, by = 10), 
-                       I = 10, 
-                       CV = .05, 
-                       CVi = .1,
-                       mu_pars = list(Rmin = log(1), 
-                                      Rmax = log(100), 
-                                      beta = -4.5,
-                                      NEC = 10),
-                       sigma_par = 1/10,
-                       ID_pars = c("Rmax", "NEC", "beta", "all", "cov"))
-
-datasets_list = list(
-  df_list_Rmax = list(
-    CVi.0 = generate_datasets(
-      n_sims_generator(ID_pars = case[1], I = n_id, CV = .05,
-                       CVi = CVi[1]), n_sims = n_sim)
-      
-    
-    
-  )
-)
-  
-  
-  
-  generate_datasets(
-  , 
-                                  n_sims = n_sims)
-
-
-datasets_func = generate_datasets(data_generator(), n_sims)
-
-data_list = list(
-  data_list_Rmax = generate_datasets(n_sims_generator, n_sims = n_sims)
-    
-  datasets_func$generated[[1]]
-)
 
 
 
