@@ -134,10 +134,10 @@ data_sim_list_fun = function(n_sim = 100,
   
   for (j in 1:length(case_list$case)) {
     for (i in 1:length(case_list$CVi)) {
-      data_list[i] = 
+      #data_list[i] = 
       
     }
-  }
+  }}
   
   for (i in 1:length(case_list$CVi)) {
     data_list_Rmax[i] = generate_datasets(
@@ -156,43 +156,12 @@ data_sim_list_fun = function(n_sim = 100,
     names(data_list_Rmax[i]) = paste("CVi =", case_list$CVi[i])
   }
 
-  
-    
-  )
-}
 
 
 
 
 
 
-datasets_list = list(
-  df_list_Rmax = list(
-    CVi.0 = datasets_func()
-      
-      generate_datasets(
-      n_sims_generator(ID_pars = case[1], I = n_id, CV = .05,
-                       CVi = CVi[1]), n_sims = n_sim)
-    
-    
-    
-  )
-)
-
-
-
-generate_datasets(
-  , 
-  n_sims = n_sims)
-
-
-datasets_func = generate_datasets(data_generator(), n_sims)
-
-data_list = list(
-  data_list_Rmax = generate_datasets(n_sims_generator, n_sims = n_sims)
-  
-  datasets_func$generated[[1]]
-)
 
 
 # Function to define priors to pass on to brms ----
