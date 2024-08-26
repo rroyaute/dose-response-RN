@@ -3,6 +3,8 @@ library(tidyverse)
 library(here)
 library(truncnorm)
 library(patchwork)
+library(brms)
+library(SBC)
 
 theme_set(theme_bw(12))
 
@@ -15,28 +17,37 @@ CVi = .5
 nsim = 100
 ## Test vi_Rmax ----
 # Test case with extreme individual variation
+# Dose = seq(0,100, length.out = 200)
 df = data_generator(ID_pars = "Rmax", CVi = CVi, I = I)
 vars = df$variables
 df = df$generated 
 
 fig.Rmax = df %>% 
-  ggplot(aes(y = y, x = Dose, group = ID)) +
-  geom_point(aes(color = factor(ID)), alpha = .8, size = 3) +
-  geom_line(alpha = .4) +
+  ggplot(aes(y = y, x = Dose)) +
+  # Add individual trends
+  map(1:I, ~geom_function(
+    fun = DR_logRN_fun,
+    args = list(
+      # Dose = seq(0, 100, length.out = 200),
+      Rmin = log(exp(vars$b_Rmin_Intercept)),
+      Rmax = log(exp(vars$b_Rmax_Intercept + vars$r_ID__Rmax))[.x],
+      beta = (vars$b_beta_Intercept + vars$r_ID__beta_Intercept)[.x],
+      NEC =( vars$b_NEC_Intercept + vars$r_ID__NEC_Intercept)[.x]),
+    alpha = 0.2, 
+    linewidth = .25)) +
   # Add population average trend
   geom_function(fun = DR_logRN_fun, 
                 args = list(Rmin = log(exp(vars$b_Rmin_Intercept)), 
                             Rmax = log(exp(vars$b_Rmax_Intercept)), 
                             beta = vars$b_beta_Intercept, 
                             NEC = vars$b_NEC_Intercept),
-                color = "red", linewidth = 2) +
-  scale_color_viridis_d() +
+                color = "red", linewidth = 1.25) +
   labs(x = "Dose", y = "Response") +
   theme_bw(14) +
   theme(legend.position = "none") +
   ggtitle("Parameter Rmax", 
           subtitle = "with sd = 0.5")
-fig.Rmax
+# fig.Rmax
   
 hist(exp(vars$b_Rmax_Intercept + vars$r_ID__Rmax))
 mu_Rmax = mean(exp(vars$b_Rmax_Intercept + vars$r_ID__Rmax))
@@ -51,23 +62,31 @@ vars = df$variables
 df = df$generated 
 
 fig.NEC = df %>% 
-  ggplot(aes(y = y, x = Dose, group = ID)) +
-  geom_point(aes(color = factor(ID)), alpha = .8, size = 3) +
-  geom_line(alpha = .4) +
+  ggplot(aes(y = y, x = Dose)) +
+  # Add individual trends
+  map(1:I, ~geom_function(
+    fun = DR_logRN_fun,
+    args = list(
+      # Dose = seq(0, 100, length.out = 200),
+      Rmin = log(exp(vars$b_Rmin_Intercept)),
+      Rmax = log(exp(vars$b_Rmax_Intercept + vars$r_ID__Rmax))[.x],
+      beta = (vars$b_beta_Intercept + vars$r_ID__beta_Intercept)[.x],
+      NEC =( vars$b_NEC_Intercept + vars$r_ID__NEC_Intercept)[.x]),
+    alpha = 0.2, 
+    linewidth = .25)) +
   # Add population average trend
   geom_function(fun = DR_logRN_fun, 
                 args = list(Rmin = log(exp(vars$b_Rmin_Intercept)), 
                             Rmax = log(exp(vars$b_Rmax_Intercept)), 
                             beta = vars$b_beta_Intercept, 
                             NEC = vars$b_NEC_Intercept),
-                color = "red", linewidth = 2) +
-  scale_color_viridis_d() +
+                color = "red", linewidth = 1.25) +
   labs(x = "Dose", y = "Response") +
   theme_bw(14) +
   theme(legend.position = "none") +
   ggtitle("Parameter NEC", 
           subtitle = "with sd = 0.5")
-fig.NEC
+# fig.NEC
 
 hist(vars$b_NEC_Intercept + vars$r_ID__NEC)
 mu_NEC = mean(vars$b_NEC_Intercept + vars$r_ID__NEC)
@@ -82,24 +101,33 @@ df = data_generator(ID_pars = "beta", CVi = CVi, I = I)
 vars = df$variables
 df = df$generated 
 
-fig.beta = df %>% 
-  ggplot(aes(y = y, x = Dose, group = ID)) +
-  geom_point(aes(color = factor(ID)), alpha = .8, size = 3) +
-  geom_line() +
+fig.beta = 
+  df %>% 
+  ggplot(aes(y = y, x = Dose)) +
+  # Add individual trends
+  map(1:I, ~geom_function(
+    fun = DR_logRN_fun,
+    args = list(
+      # Dose = seq(0, 100, length.out = 200),
+      Rmin = log(exp(vars$b_Rmin_Intercept)),
+      Rmax = log(exp(vars$b_Rmax_Intercept + vars$r_ID__Rmax))[.x],
+      beta = (vars$b_beta_Intercept + vars$r_ID__beta_Intercept)[.x],
+      NEC =( vars$b_NEC_Intercept + vars$r_ID__NEC_Intercept)[.x]),
+    alpha = 0.2, 
+    linewidth = .25)) +
   # Add population average trend
   geom_function(fun = DR_logRN_fun, 
                 args = list(Rmin = log(exp(vars$b_Rmin_Intercept)), 
                             Rmax = log(exp(vars$b_Rmax_Intercept)), 
                             beta = vars$b_beta_Intercept, 
                             NEC = vars$b_NEC_Intercept),
-                color = "red", size = 2) +
-  scale_color_viridis_d() +
+                color = "red", linewidth = 1.25) +
   labs(x = "Dose", y = "Response") +
   theme_bw(14) +
   theme(legend.position = "none") +
   ggtitle(expression(paste("Parameter ", beta)), 
           subtitle = "with sd = 0.5")
-fig.beta
+# fig.beta
 
 hist(exp(vars$b_beta_Intercept + vars$r_ID__beta))
 mu_beta = mean(exp(vars$b_beta_Intercept + vars$r_ID__beta))
@@ -115,24 +143,31 @@ vars = df$variables
 df = df$generated 
 
 fig.all = df %>% 
-  ggplot(aes(y = y, x = Dose, group = ID)) +
-  geom_point(aes(color = factor(ID)), alpha = .8, size = 3) +
-  geom_line(alpha = .4) +
+  ggplot(aes(y = y, x = Dose)) +
+  # Add individual trends
+  map(1:I, ~geom_function(
+    fun = DR_logRN_fun,
+    args = list(
+      # Dose = seq(0, 100, length.out = 200),
+      Rmin = log(exp(vars$b_Rmin_Intercept)),
+      Rmax = log(exp(vars$b_Rmax_Intercept + vars$r_ID__Rmax))[.x],
+      beta = (vars$b_beta_Intercept + vars$r_ID__beta_Intercept)[.x],
+      NEC =( vars$b_NEC_Intercept + vars$r_ID__NEC_Intercept)[.x]),
+    alpha = 0.2, 
+    linewidth = .25)) +
   # Add population average trend
   geom_function(fun = DR_logRN_fun, 
                 args = list(Rmin = log(exp(vars$b_Rmin_Intercept)), 
                             Rmax = log(exp(vars$b_Rmax_Intercept)), 
                             beta = vars$b_beta_Intercept, 
                             NEC = vars$b_NEC_Intercept),
-                color = "red", linewidth = 2) +
-  scale_color_viridis_d() +
+                color = "red", linewidth = 1.25) +
   labs(x = "Dose", y = "Response") +
   theme_bw(14) +
   theme(legend.position = "none") +
   ggtitle("All parameters", 
           subtitle = "with sd = 0.5")
-fig.all
-
+# fig.all
 
 hist(exp(vars$b_Rmax_Intercept + vars$r_ID__Rmax))
 mu_Rmax = mean(exp(vars$b_Rmax_Intercept + vars$r_ID__Rmax))
@@ -162,9 +197,11 @@ datasets_func = generate_datasets(n_sims_generator, n_sims = nsim) # passed
 
 ## Recap figure ----
 fig.params = (fig.Rmax + fig.NEC + fig.beta ) / fig.all
-fig.params
+# fig.params
 fig.params.2 = (fig.Rmax + fig.NEC) / (fig.beta + fig.all)
-fig.params.2
+# fig.params.2
+fig.params.3 = fig.params.2 & ylim(0, 510)
+# fig.params.3
 
 ggsave("outputs/figs/fig.param.sim.jpeg",
        fig.params, 
@@ -174,6 +211,12 @@ ggsave("outputs/figs/fig.param.sim.jpeg",
 
 ggsave("outputs/figs/fig.param.sim.2.jpeg",
        fig.params.2, 
+       width = 18, 
+       scale = 1.2,
+       units = "cm")
+
+ggsave("outputs/figs/fig.param.sim.3.jpeg",
+       fig.params.3, 
        width = 18, 
        scale = 1.2,
        units = "cm")
