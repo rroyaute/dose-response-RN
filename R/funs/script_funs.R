@@ -121,40 +121,40 @@ n_sims_generator = SBC_generator_function(
                  NEC = 10),
   ID_pars = c("Rmax", "NEC", "beta", "all", "cov"))
 
-# Function to store lists of datasets for all simulation cases ----
-data_sim_list_fun = function(n_sim = 100,
-                             n_id = 20){
-  # Simulation cases
-  case_list = list(n_sim = 1:n_sim,
-                   CVi = c(0, .1, .2, .3, .4, .5),
-                   case = c("Rmax", "NEC", "beta", "all"), # "cov" not yet implemented
-                   mod = c("pop", "vi")) 
-  data_list = list()
-  data_list_Rmax = list(case = list())
-  
-  for (j in 1:length(case_list$case)) {
-    for (i in 1:length(case_list$CVi)) {
-      #data_list[i] = 
-      
-    }
-  }}
-  
-  for (i in 1:length(case_list$CVi)) {
-    data_list_Rmax[i] = generate_datasets(
-      SBC_generator_function(
-        data_generator,
-        D = seq(0, 100, by = 10),
-        I = n_id,
-        CV = .05,
-        CVi = case_list$CVi[i],
-        mu_pars = list(Rmin = log(1),
-                       Rmax = log(100),
-                       beta = -4.5,
-                       NEC = 10),
-        ID_pars = case_list$case[1]), 
-      n_sims = n_sim)
-    names(data_list_Rmax[i]) = paste("CVi =", case_list$CVi[i])
-  }
+# Function to store lists of datasets for all simulation cases (TODO) ----
+# data_sim_list_fun = function(n_sim = 100,
+#                              n_id = 20){
+#   # Simulation cases
+#   case_list = list(n_sim = 1:n_sim,
+#                    CVi = c(0, .1, .2, .3, .4, .5),
+#                    case = c("Rmax", "NEC", "beta", "all"), # "cov" not yet implemented
+#                    mod = c("pop", "vi")) 
+#   data_list = list()
+#   data_list_Rmax = list(case = list())
+#   
+#   for (j in 1:length(case_list$case)) {
+#     for (i in 1:length(case_list$CVi)) {
+#       #data_list[i] = 
+#       
+#     }
+#   }}
+#   
+#   for (i in 1:length(case_list$CVi)) {
+#     data_list_Rmax[i] = generate_datasets(
+#       SBC_generator_function(
+#         data_generator,
+#         D = seq(0, 100, by = 10),
+#         I = n_id,
+#         CV = .05,
+#         CVi = case_list$CVi[i],
+#         mu_pars = list(Rmin = log(1),
+#                        Rmax = log(100),
+#                        beta = -4.5,
+#                        NEC = 10),
+#         ID_pars = case_list$case[1]), 
+#       n_sims = n_sim)
+#     names(data_list_Rmax[i]) = paste("CVi =", case_list$CVi[i])
+#   }
 
 
 
@@ -239,20 +239,17 @@ bf_list = list(
   
 
 
-# Function to fit the models to simulated data ----
+# Function to fit the models to simulated data (TODO) ----
 
-
-
-
-backend_func_Rmax = function(mod = c("pop", "vi")){
-  
-}
-
-
-backend_func_Rmax <- SBC_backend_brms(bf.vi,  
-                                 prior = priors.vi.2, 
-                                 control = list(adapt_delta = .95,
-                                                max_treedepth = 12),
-                                 chains = 4,
-                                 template_data = datasets_func$generated[[1]],
-                                 out_stan_file = file.path(cache_dir, "brms_NEC_vi.stan"))
+# backend_func_Rmax = function(mod = c("pop", "vi")){
+#   
+# }
+# 
+# 
+# backend_func_Rmax <- SBC_backend_brms(bf.vi,  
+#                                  prior = priors.vi.2, 
+#                                  control = list(adapt_delta = .95,
+#                                                 max_treedepth = 12),
+#                                  chains = 4,
+#                                  template_data = datasets_func$generated[[1]],
+#                                  out_stan_file = file.path(cache_dir, "brms_NEC_vi.stan"))
