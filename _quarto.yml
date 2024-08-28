@@ -1,4 +1,9 @@
 project:
-  type: website
   output-dir: docs
   execute-dir: project
+toc: true
+number-sections: true
+
+pdf:
+  papersize: a4paper
+  keep-tex: true
