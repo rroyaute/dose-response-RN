@@ -28,7 +28,7 @@ data_generator = function(D = seq(0, 100, by = 10),
   ID = rep(1:I, each = length(D))
   
   # Assume small variation around mean value
-  # CV set to 75 % variation around the mean by default
+  # CV set to 5 % variation around the mean by default
   b_Rmin_Intercept = mu_pars$Rmin # Fix the minimum value
   # Alternative if we want to sample Rmin from a prior distribution
   # b_Rmin_Intercept = rtruncnorm(1, a = 1, b = Inf, mu_pars$Rmin, mu_pars$Rmin * CV)
