@@ -1,5 +1,5 @@
 ---
-title: "Dose-response models as individual reaction norms: Acocunting for individual variation in  ecotoxicological assays"
+title: "Dose-response models as individual reaction norms: Accounting for individual variation in  ecotoxicological assays"
 subtitle: "Or how to run 40 000 + simulations just to prove a point"
 
 format: 
