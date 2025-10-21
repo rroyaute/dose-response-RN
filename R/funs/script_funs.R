@@ -10,6 +10,19 @@ DR_logRN_fun = function(Dose, Rmin, Rmax, beta, NEC){
   return(yhat)
 }
 
+DR_fun_log = function(Dose, alpha , beta, NEC){
+  log_yhat = ifelse(Dose < NEC, log(alpha), 
+                    log(alpha) - exp(beta) * (Dose - NEC))
+  return(log_yhat)
+}
+
+DR_fun_log_exp = function(Dose, alpha , beta, NEC){
+  log_yhat = ifelse(Dose < NEC, log(alpha), 
+                    log(alpha) - exp(beta) * (Dose - NEC))
+  yhat = exp(log_yhat)
+  return(yhat)
+}
+
 # Function to generate 1 dataset according to prior distribution of parameters ----
 data_generator = function(D = seq(0, 100, by = 10), 
                           I = 10, 
