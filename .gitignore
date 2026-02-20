@@ -10,3 +10,4 @@
 *_cache
 /_brms_SBC_cache
 /_SBC_cache_DR_RN_rstan
+outputs/figs/fig.dr.full.tiff
