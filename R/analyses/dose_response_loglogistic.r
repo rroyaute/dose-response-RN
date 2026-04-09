@@ -272,6 +272,7 @@ fig_genotypes <- ggplot(df.sim.lines,
 ggsave(filename = "outputs/figs/fig_genotypes.jpeg", fig_genotypes)
 
 # Figure: Pre-Post exposure reaction norms ----
+## Dose-response figure ----
 Dose <- seq(0,1, length.out = 6)
 n_id <- 20 # 10 individuals per doses
 #log(y) ~ log(d / (1 + exp(b * (log(x) - log(e))))),
@@ -301,6 +302,7 @@ ID <- MASS::mvrnorm(n_id*length(Dose[2:6]), Mu, Sigma) %>%
   mutate(ID = 1:(n_id*length(Dose[2:6]))) %>% 
   mutate(assigned_dose = rep(Dose[2:6], each = 20)) %>% 
   mutate(control_dose = .001) %>% 
+  mutate(Group = as.factor(assigned_dose)) %>% 
   arrange(e_i) %>%
   mutate(color_index = row_number())
 
@@ -330,6 +332,76 @@ fig_ID <- ggplot(df.sim.id,
 
 ggsave(filename = "outputs/figs/fig_ID.jpeg", fig_ID)
 
+
+## Slope variance estimation and figure ----
+df.sim.id <- df.sim.id %>% 
+  mutate(Phase = as.factor(case_when(Dose == 0.001 ~ "Pre", .default = "Post"))) %>% 
+  mutate(Phase = fct_relevel(Phase, "Pre", "Post"))
+  
+
+formula_drm_id <- bf(
+  log(y) ~ Dose + (1 + Phase|gr(ID, by = Group)))
+formula_drm_id <- bf(
+  y ~ Dose + (1 + Phase|gr(ID, by = Group)))
+formula_drm_id <- bf(
+  log(y) ~ log(d / (1 + exp(b * (log(Dose) - log(e))))),
+  b + d + e ~ 1 + (1|c|ID),
+  nl = TRUE)
+
+### Prior predictive checks ----
+priors <- c(
+  prior(normal(2, 1),     nlpar = "b", lb = 0),   # slope, positive for decreasing curve
+  prior(normal(0, 0.5),   nlpar = "d"),             # log(upper asymptote); log(1) = 0 for max y ≈ 1
+  prior(normal(0.5, 0.2), nlpar = "e", lb = 0),    # ED50, unchanged
+  prior(exponential(10), class = "sd", nlpar = "b"),
+  prior(exponential(10), class = "sd", nlpar = "d"),
+  prior(exponential(10), class = "sd", nlpar = "e"),
+  prior(exponential(10),     class = "sigma"),
+  prior(lkj_corr_cholesky(3),     class = "L"))
+
+mod.brm.prior.id <- brm(
+  formula  = formula_drm_id,
+  data     = df.sim.id,
+  family   = "gaussian",
+  prior    = priors,
+  sample_prior = "only",
+  init     = rep(list(inits), 4),
+  chains   = 4, 
+  iter = 4000,
+  control = list(adapt_delta = .95,
+                 max_treedepth = 15),
+  threads = threading(4), 
+  cores = 4,
+  backend = "cmdstan")
+plot(mod.brm.prior.id)
+conditional_effects(mod.brm.prior.id, spaghetti = T, ndraws = 100)
+plot(conditional_effects(mod.brm.prior.id, re_formula = NULL), points = T)
+pp_check(mod.brm.prior.id, ndraws = 100)
+
+### Posterior predictive checks ----
+mod.brm.id <- brm(
+  formula  = formula_drm_id,
+  data     = df.sim.id,
+  family   = "gaussian",
+  prior    = priors,
+  sample_prior = "yes",
+  init     = rep(list(inits), 4),
+  chains   = 4, 
+  warmup = 8000,
+  iter = 10000,
+  control = list(adapt_delta = .95,
+                 max_treedepth = 15),
+  threads = threading(4), 
+  cores = 4,
+  backend = "cmdstan")
+plot(mod.brm.id)
+plot(conditional_effects(mod.brm.id,
+                         re_formula = NULL, 
+                         method = "posterior_predict"), 
+     points = T)
+pp_check(mod.brm.id, ndraws = 100)
+
+###
 
 # Combine into 1 figure ----
 fig_metrics <- fig_predinterval + fig_genotypes + fig_ID
