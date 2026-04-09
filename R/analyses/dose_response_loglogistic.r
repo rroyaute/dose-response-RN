@@ -271,7 +271,7 @@ fig_genotypes <- ggplot(df.sim.lines,
 ggsave(filename = "outputs/figs/fig_genotypes.jpeg", fig_genotypes)
 
 # Figure: Pre-Post exposure reaction norms ----
-n_doses <- 5
+Dose <- seq(0,1, length.out = 6)
 n_id <- 20 # 10 individuals per doses
 #log(y) ~ log(d / (1 + exp(b * (log(x) - log(e))))),
 CVi <- .1 # 10 % of variation around mean for all parameters
@@ -279,3 +279,52 @@ sigma_d <- d * CVi # Upper bound variation
 sigma_b <- b * CVi # Rate variation
 sigma_e <- e * CVi # EC50 sensitivity variation
 rho <- -.4 # negative covariance between upper bound and EC50
+
+set.seed(42)
+d_i <- rtruncnorm(n_id, mean = d, sd = sigma_d, a = 0)
+b_i <- rtruncnorm(n_id,  mean = b, sd = sigma_b, a = 0)
+e_i <- rtruncnorm(n_id,  mean = e, sd = sigma_e, a = 0)
+
+Mu <- c(d, b, e)
+sigmas <- c(sigma_d, sigma_b, sigma_e) # 10 % CV around the mean
+rho_mat <- matrix(c(1, rho, 0,
+                    rho, 1, 0,
+                    0, 0, 1), 
+                  nrow = 3)
+Sigma <- diag(sigmas) %*% rho_mat %*% diag(sigmas)
+
+set.seed(42)
+ID <- MASS::mvrnorm(n_id*length(Dose[2:6]), Mu, Sigma) %>% 
+  data.frame() %>% 
+  set_names("d_i", "b_i", "e_i") %>% 
+  mutate(ID = 1:(n_id*length(Dose[2:6]))) %>% 
+  mutate(assigned_dose = rep(Dose[2:6], each = 20)) %>% 
+  mutate(control_dose = .001) %>% 
+  arrange(e_i) %>%
+  mutate(color_index = row_number())
+
+ggplot(ID, aes(x = e_i, y = d_i/2, color = factor(color_index))) + 
+  geom_point() + 
+  scale_color_viridis_d(option = "H", direction = -1) +
+  xlim(0, 1) + ylim(0,1) +
+  theme_bw()
+
+df.sim.id <- ID %>% 
+  pivot_longer(cols = c(assigned_dose:control_dose), values_to = "Dose") %>% 
+  mutate(mu = d_i / (1 + exp(b_i * log(Dose/e_i)))) %>% 
+  mutate(y = rlnorm(n(), log(mu), sigma)) 
+  
+df.sim.line <- data.frame(Dose = seq(0, 1, by = 0.01)) %>% 
+  mutate(y = d / (1 + exp(b * log(Dose/e))))
+  
+fig_ID <- ggplot(df.sim.id, 
+                 aes(y = y, x = Dose)) +
+  geom_line(linewidth = .5, aes(group = ID), alpha = .4) +
+  geom_point(size = 2.5, shape = 21, fill = "white", alpha = .8) +
+  geom_line(data = df.sim.line, aes(y = y, x = Dose),
+            linewidth = 1, color = "dodgerblue") +
+  labs(x = "Dose", y = "Phenotype") +
+  theme_bw(14) +
+  theme(legend.position = "none")
+
+ggsave(filename = "outputs/figs/fig_ID.jpeg", fig_ID)
