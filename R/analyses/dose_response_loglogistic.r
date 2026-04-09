@@ -5,6 +5,7 @@ library(ggdist)
 library(truncnorm)
 library(distributional)
 library(viridis)
+library(patchwork)
 
 # Figure: Prediction vs. Confidence Interval over EC50 ----
 sigma <- .1
@@ -127,7 +128,7 @@ fig_predinterval <- ggplot(data = df.sim, aes(x = x, y = y)) +
   # Data points
   geom_point(shape = 21, colour = "black", fill = "white", size = 2, stroke = 1) +
   labs(x = "Dose", y = "Phenotype") +
-  theme_bw()
+  theme_bw(12)
 
 ggsave(filename = "outputs/figs/fig_predinterval.jpeg", fig_predinterval)
 
@@ -265,7 +266,7 @@ fig_genotypes <- ggplot(df.sim.lines,
   # stat_halfeye(aes(y = .5, xdist = dist_normal(e, sigma_e)),
   #              color = "black", fill = "grey", alpha = .6) +
   labs(x = "Dose", y = "Phenotype") +
-  theme_bw(14) +
+  theme_bw(12) +
   theme(legend.position = "none")
 
 ggsave(filename = "outputs/figs/fig_genotypes.jpeg", fig_genotypes)
@@ -324,7 +325,13 @@ fig_ID <- ggplot(df.sim.id,
   geom_line(data = df.sim.line, aes(y = y, x = Dose),
             linewidth = 1, color = "dodgerblue") +
   labs(x = "Dose", y = "Phenotype") +
-  theme_bw(14) +
+  theme_bw(12) +
   theme(legend.position = "none")
 
 ggsave(filename = "outputs/figs/fig_ID.jpeg", fig_ID)
+
+
+# Combine into 1 figure ----
+fig_metrics <- fig_predinterval + fig_genotypes + fig_ID
+ggsave(filename = "outputs/figs/fig_metrics.jpeg", fig_metrics, 
+       height = 8, width = 16, units = "cm")
