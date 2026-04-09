@@ -2,8 +2,11 @@ library(tidyverse)
 library(drc)
 library(brms)
 library(ggdist)
+library(truncnorm)
+library(distributional)
+library(viridis)
 
-# Figure 1: Prediction vs. Confidence Interval over EC50 ----
+# Figure: Prediction vs. Confidence Interval over EC50 ----
 sigma <- .1
 c <- 0
 d <- 1
@@ -74,7 +77,8 @@ mod.brm <- brm(
   init     = rep(list(inits), 4), 
   seed = 42,
   chains   = 4, 
-  iter = 4000,
+  iter = 4000, 
+  control = list(adapt_delta = .95),
   backend = "cmdstan")
 
 plot(mod.brm)
@@ -102,7 +106,7 @@ epred_df <- data.frame(
   y_up  = apply(epred, 2, function(p) exp(quantile(p, 0.975)))
 )
 
-ggplot(data = df.sim, aes(x = x, y = y)) +
+fig_predinterval <- ggplot(data = df.sim, aes(x = x, y = y)) +
   # Fitted line
   geom_line(data = pred_df, 
             aes(x = x, y = y), linewidth = 1, color = "dodgerblue") +
@@ -121,8 +125,11 @@ ggplot(data = df.sim, aes(x = x, y = y)) +
                      xmax = CRI["b_e_Intercept",4],
                      width = 0), color = "tomato2") +
   # Data points
-  geom_point(shape = 21, colour = "black", size = 2, stroke = 1) +
+  geom_point(shape = 21, colour = "black", fill = "white", size = 2, stroke = 1) +
+  labs(x = "Dose", y = "Phenotype") +
   theme_bw()
+
+ggsave(filename = "outputs/figs/fig_predinterval.jpeg", fig_predinterval)
 
 # Distribution of EC50 values
 # Extract posterior samples of e and its variance
@@ -196,6 +203,79 @@ df %>%
                      width = 0), color = "tomato2") +
   theme_bw()
 
-# Figure 2: Pre-Post exposure reaction norms ----
+# Figure: Genotype sensitivity ----
+Dose <- seq(0,1, length.out = 6)
+n_g <- 5 # 5 genotypes
+CVa <- .1 # 10 % of variation around mean for all parameters
+sigma_d <- d * CVa # Upper bound variation
+sigma_b <- b * CVa # Rate variation
+sigma_e <- e * CVa # EC50 sensitivity variation
+rho <- -.4 # negative covariance between upper bound and EC50
 
+set.seed(42)
+d_g <- rtruncnorm(n_g, mean = d, sd = sigma_d, a = 0)
+b_g <- rtruncnorm(n_g,  mean = b, sd = sigma_b, a = 0)
+e_g <- rtruncnorm(n_g,  mean = e, sd = sigma_e, a = 0)
 
+Mu <- c(d, b, e)
+sigmas <- c(sigma_d, sigma_b, sigma_e) # 10 % CV around the mean
+rho_mat <- matrix(c(1, rho, 0,
+                   rho, 1, 0,
+                   0, 0, 1), 
+                 nrow = 3)
+Sigma <- diag(sigmas) %*% rho_mat %*% diag(sigmas)
+
+set.seed(42)
+G <- MASS::mvrnorm(n_g, Mu, Sigma) %>% 
+  data.frame() %>% 
+  set_names("d_g", "b_g", "e_g") %>% 
+  mutate(G = 1:n_g) %>% 
+  arrange(e_g) %>%
+  mutate(color_index = row_number())
+
+ggplot(G, aes(x = e_g, y = d_g/2, color = factor(color_index))) + 
+  geom_point() + 
+  scale_color_viridis_d(option = "H", direction = -1) +
+  xlim(0, 1) + ylim(0,1) +
+  theme_bw()
+
+# df.sim.points <- G %>%
+#   expand(nesting(G, color_index, d_g, b_g, e_g), 
+#          Dose = Dose) %>%
+#   mutate(mu = d_g / (1 + exp(b_g * log(Dose/e_g)))) %>% 
+#   mutate(y = rlnorm(n(), log(mu), sigma)) %>% 
+#   mutate(log_y = log(y))
+
+df.sim.lines <- G %>%
+  expand(nesting(G, color_index, d_g, b_g, e_g),
+         Dose = seq(0, 1, by = 0.01)) %>%
+  mutate(mu = d_g / (1 + exp(b_g * log(Dose/e_g))))
+
+fig_genotypes <- ggplot(df.sim.lines, 
+       aes(y = y, x = Dose, 
+           color = factor(color_index),
+           fill = factor(color_index))) +
+  geom_line(data = df.sim.lines, 
+            aes(y = mu, x = Dose), linewidth = 1) +
+  geom_point(data = G,
+             aes(y = d_g/2, x = e_g), 
+             size = 2.5, shape = 21, fill = "white", alpha = .8) +
+  scale_color_viridis_d(option = "H", direction = -1, 
+                        begin = .2, end = .8) +
+  # stat_halfeye(aes(y = .5, xdist = dist_normal(e, sigma_e)),
+  #              color = "black", fill = "grey", alpha = .6) +
+  labs(x = "Dose", y = "Phenotype") +
+  theme_bw(14) +
+  theme(legend.position = "none")
+
+ggsave(filename = "outputs/figs/fig_genotypes.jpeg", fig_genotypes)
+
+# Figure: Pre-Post exposure reaction norms ----
+n_doses <- 5
+n_id <- 20 # 10 individuals per doses
+#log(y) ~ log(d / (1 + exp(b * (log(x) - log(e))))),
+CVi <- .1 # 10 % of variation around mean for all parameters
+sigma_d <- d * CVi # Upper bound variation
+sigma_b <- b * CVi # Rate variation
+sigma_e <- e * CVi # EC50 sensitivity variation
+rho <- -.4 # negative covariance between upper bound and EC50
