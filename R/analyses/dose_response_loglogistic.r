@@ -7,6 +7,8 @@ library(distributional)
 library(viridis)
 library(patchwork)
 library(GGally)
+library(tidybayes)
+library(modelr)
 
 # Dose-response form and parameter values ----
 sigma <- .1
@@ -346,8 +348,9 @@ ggsave(filename = "outputs/figs/fig_genotypes.jpeg", fig_genotypes)
 
 # Figure: Pre-Post exposure reaction norms ----
 ## Dose-response figure ----
+### Simulate data ----
 Dose <- seq(0, 1, length.out = 6)
-n_id <- 20 # 10 individuals per doses
+n_id <- 20 # 20 individuals per doses
 CVi <- .1 # 10 % of variation around mean for all parameters
 sigma_d <- d * CVi # Upper bound variation
 sigma_b <- b * CVi # Rate variation
@@ -362,6 +365,7 @@ e_i <- rtruncnorm(n_id, mean = e, sd = sigma_e, a = 0)
 Mu <- c(d, b, e)
 sigmas <- c(sigma_d, sigma_b, sigma_e) # 10 % CV around the mean
 rho_mat <- matrix(c(1, -rho, rho, -rho, 1, -rho, rho, -rho, 1), nrow = 3)
+names <- c("sigma_d", "sigma_b", "sigma_e")
 colnames(rho_mat) <- names
 rownames(rho_mat) <- names
 Sigma <- diag(sigmas) %*% rho_mat %*% diag(sigmas) # Covariance matrix
@@ -371,9 +375,10 @@ ID <- MASS::mvrnorm(n_id * length(Dose[2:6]), Mu, Sigma) %>%
   data.frame() %>%
   set_names("d_i", "b_i", "e_i") %>%
   mutate(ID = 1:(n_id * length(Dose[2:6]))) %>%
-  mutate(assigned_dose = rep(Dose[2:6], each = 20)) %>%
+  mutate(assigned_dose = rep(Dose[2:6], each = n_id)) %>%
   mutate(control_dose = .001) %>%
-  mutate(Group = as.factor(assigned_dose)) %>%
+  mutate(Group_n = assigned_dose) %>% # Dose group as numeric
+  mutate(Group_f = as.factor(assigned_dose)) %>% # Dose group as factor
   arrange(e_i) %>%
   mutate(color_index = row_number())
 
@@ -384,15 +389,19 @@ ID %>%
   theme_bw()
 
 # Visualize genotype-specific dose-responses
-df.sim.id <- ID %>%
+df.sim.vi <- ID %>%
   pivot_longer(cols = c(assigned_dose:control_dose), values_to = "Dose") %>%
   mutate(mu = d_i / (1 + exp(b_i * log(Dose / e_i)))) %>%
-  mutate(y = rlnorm(n(), log(mu), sigma))
+  mutate(y = rlnorm(n(), log(mu), sigma)) %>%
+  mutate(
+    Phase = as.factor(case_when(Dose == 0.001 ~ "Pre", .default = "Post"))
+  ) %>%
+  mutate(Phase = fct_relevel(Phase, "Pre", "Post"))
 
 df.sim.line <- data.frame(Dose = seq(0, 1, by = 0.01)) %>%
   mutate(y = d / (1 + exp(b * log(Dose / e))))
 
-fig_ID <- ggplot(df.sim.id, aes(y = y, x = Dose)) +
+fig_ID <- ggplot(df.sim.vi, aes(y = y, x = Dose)) +
   geom_line(linewidth = .5, aes(group = ID), alpha = .15) +
   geom_point(size = 2.5, shape = 21, fill = "white", alpha = .8) +
   geom_line(
@@ -409,12 +418,6 @@ ggsave(filename = "outputs/figs/fig_ID.jpeg", fig_ID)
 
 
 ## Among-individual variation in dose-response ----
-df.sim.id <- df.sim.id %>%
-  mutate(
-    Phase = as.factor(case_when(Dose == 0.001 ~ "Pre", .default = "Post"))
-  ) %>%
-  mutate(Phase = fct_relevel(Phase, "Pre", "Post"))
-
 ### Define brms model ----
 formula_drc_vi <- bf(
   log(y) ~ log(d / (1 + exp(b * (log(Dose) - log(e))))),
@@ -448,7 +451,7 @@ priors.vi %>%
 ### Run model on priors only ----
 brm.drc.vi.prior <- brm(
   formula = formula_drc_vi,
-  data = df.sim.id,
+  data = df.sim.vi,
   family = "gaussian",
   prior = priors.vi,
   sample_prior = "only",
@@ -471,7 +474,7 @@ pp_check(brm.drc.vi.prior, ndraws = 200)
 ### Fit model to simulated data ----
 brm.drc.vi <- brm(
   formula = formula_drc_vi,
-  data = df.sim.id,
+  data = df.sim.vi,
   family = "gaussian",
   prior = priors.vi,
   sample_prior = "yes",
@@ -500,17 +503,30 @@ plot(
 pp_check(brm.drc.vi, ndraws = 200)
 
 ## Slope variance estimation and figure ----
+### Mean-center data ----
+# Y-values standardized to mean = 0 and SD = 1
+# Within individual centring around pre-post exposure doses (taking mid-point between pre-post exposure)
+df.sim.vi <- df.sim.vi %>%
+  mutate(y_sc = as.numeric(scale(y)))
+
+df.sim.vi.long <- df.sim.vi %>% # long format for comparing model to raw values
+  dplyr::select(ID, Group_n, Group_f, Phase, y, y_sc) %>%
+  pivot_wider(names_from = Phase, values_from = c(y, y_sc))
+
 ### Define brms model ----
 formula_lmm_vi <- bf(
-  log(y) ~ Dose + (1 + Phase | gr(ID, by = Group))
+  y_sc ~ Phase * Group_f + (1 + Phase | gr(ID, by = Group_f))
 )
-get_prior(formula_lmm_vi, df.sim.id)
+
+get_prior(formula_lmm_vi, df.sim.vi)
 
 ### Prior predictive checks ----
 priors.vi.lmm <- c(
+  prior(normal(0, 1), class = "Intercept"),
   prior(normal(0, 1), class = "b"),
-  prior(exponential(10), class = "sd"), # Exponential prior with mean 0.10
-  prior(exponential(10), class = "sigma"),
+  prior(exponential(3), class = "sd", coef = "Intercept", group = "ID"), # Exponential prior with mean .3 on Pre-exposure variation (given y is on SD scale)
+  prior(exponential(5), class = "sd", coef = "PhasePost", group = "ID"), # Exponential prior with mean .2 on slope variation (given y is on SD scale)
+  prior(exponential(3), class = "sigma"), # Exponential prior with mean .3 (given y is on SD scale)
   prior(lkj_corr_cholesky(2), class = "L")
 )
 
@@ -529,7 +545,7 @@ priors.vi.lmm %>%
 ### Run model on priors only ----
 brm.lmm.vi.prior <- brm(
   formula = formula_lmm_vi,
-  data = df.sim.id,
+  data = df.sim.vi,
   family = "gaussian",
   prior = priors.vi.lmm,
   sample_prior = "only",
@@ -545,18 +561,17 @@ brm.lmm.vi.prior <- brm(
 
 plot(brm.lmm.vi.prior)
 conditional_effects(brm.lmm.vi.prior, spaghetti = T, ndraws = 100)
-plot(conditional_effects(brm.lmm.vi.prior, re_formula = NULL), points = T)
+plot(conditional_effects(brm.lmm.vi.prior), points = T)
 pp_check(brm.lmm.vi.prior, ndraws = 200)
 
 ### Fit model to simulated data ----
 brm.lmm.vi <- brm(
   formula = formula_lmm_vi,
-  data = df.sim.id,
+  data = df.sim.vi,
   family = "gaussian",
   prior = priors.vi.lmm,
   sample_prior = "yes",
   chains = 4,
-  # warmup = 8000,
   iter = 4000,
   # control = list(adapt_delta = .95, max_treedepth = 15),
   threads = threading(4),
@@ -576,18 +591,19 @@ plot(
   ),
   points = T
 )
-pp_check(brm.lmm.vi, ndraws = 100)
+pp_check(brm.lmm.vi, ndraws = 500)
 
 
 ### Extract slope variance at each dose ----
+brm.lmm.vi <- readRDS("mods/brm.lmm.vi.rds")
 post_draws.vi <- as_draws_df(brm.lmm.vi)
 post_draws.vi <- post_draws.vi %>%
   dplyr::select(
-    `sd_ID__PhasePost:Group0.2`,
-    `sd_ID__PhasePost:Group0.4`,
-    `sd_ID__PhasePost:Group0.6`,
-    `sd_ID__PhasePost:Group0.8`,
-    `sd_ID__PhasePost:Group1`
+    `sd_ID__PhasePost:Group_f0.2`,
+    `sd_ID__PhasePost:Group_f0.4`,
+    `sd_ID__PhasePost:Group_f0.6`,
+    `sd_ID__PhasePost:Group_f0.8`,
+    `sd_ID__PhasePost:Group_f1`
   ) %>%
   pivot_longer(
     cols = starts_with("sd"),
@@ -597,21 +613,57 @@ post_draws.vi <- post_draws.vi %>%
   ) %>%
   mutate(
     Treatment = case_when(
-      str_detect(Treatment, "Group0.2") == T ~ .2,
-      str_detect(Treatment, "Group0.4") == T ~ .4,
-      str_detect(Treatment, "Group0.6") == T ~ .6,
-      str_detect(Treatment, "Group0.8") == T ~ .8,
-      str_detect(Treatment, "Group1") == T ~ 1
+      str_detect(Treatment, "Group_f0.2") == T ~ .2,
+      str_detect(Treatment, "Group_f0.4") == T ~ .4,
+      str_detect(Treatment, "Group_f0.6") == T ~ .6,
+      str_detect(Treatment, "Group_f0.8") == T ~ .8,
+      str_detect(Treatment, "Group_f1") == T ~ 1
     )
   )
-fig.slope_vi <- post_draws.vi %>%
+fig_slope_vi <- post_draws.vi %>%
   ggplot(aes(y = Estimate, x = Treatment)) +
-  # facet_wrap(~Sex) +
   stat_halfeye() +
-  ylim(0, 3) +
-  scale_fill_manual(values = colorpal) +
   theme_bw() +
   theme(legend.position = "none")
+# Compare to simulated values
+df.sim.vi.long %>%
+  mutate(
+    slope_i = (y_Post - y_Pre) / (Group_n / 2),
+    slope_i_sc = (y_sc_Post - y_sc_Pre) / (Group_n / 2)
+  ) %>%
+  summarise(
+    slope_mu = mean(slope_i),
+    slope_sd = sd(slope_i),
+    slope_sd_sc = sd(slope_i_sc),
+    .by = c(Group_n)
+  ) %>%
+  arrange(Group_n) %>%
+  ggplot(aes(x = Group_n, y = slope_sd_sc)) +
+  geom_point()
+
+
+### Replicate fig_ID on model predicted values (TODO) ----
+get_variables(brm.lmm.vi)
+newdata <- df.sim.vi
+
+Slope_dist <- brm.lmm.vi %>%
+  epred_draws(newdata, re_formula = NULL)
+
+Slope_dist_mqi <- brm.lmm.vi %>%
+  epred_draws(newdata, re_formula = NULL) %>%
+  median_qi() %>%
+  mutate(
+    Dose = case_when(Phase == "Pre" ~ 0.001, .default = Dose_sc_i * 2),
+    y = .epred * sd(df.sim.vi$y) + mean(df.sim.vi$y)
+  )
+
+fig_ID_mod <- ggplot(Slope_dist_mqi, aes(x = Dose, y = y, group = ID)) +
+  geom_line(linewidth = .5, aes(group = ID), alpha = .15) +
+  geom_point(size = 2.5, shape = 21, fill = "white", alpha = .8) +
+  theme_bw()
+
+((fig_ID / fig_ID_mod) & ylim(0, 1.6) & xlim(0, 1.2)) /
+  (fig_slope_vi & xlim(0, 1.2))
 
 # Combine into 1 figure ----
 fig_metrics <- (fig_predinterval + fig_genotypes + fig_ID) & ylim(0, 1.5)
