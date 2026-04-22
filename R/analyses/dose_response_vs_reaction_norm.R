@@ -79,19 +79,38 @@ fig.rn <- df.rn %>%
   geom_abline(intercept = b0, slope = b1, linewidth = 1.5) +
   # Individual reaction norms
   geom_line(linewidth = 1.5) +
-  # Individual points
+  # Individual averages
   geom_point(
     data = ID,
     aes(x = 0, y = b0 + b0_i),
     size = 4,
     shape = 21,
-    color = "black",
     fill = "white"
   ) +
   # Individual points
   geom_point(data = df.rn.subset, aes(x = x, y = y), size = 3, alpha = .4) +
+  # Within-individual variation ribbon (centered around each individual)
+  geom_ribbon(
+    aes(xmin = -2, xmax = 2, ymin = yhat - 2 * sigma, ymax = yhat + 2 * sigma),
+    alpha = .2,
+    linewidth = 0
+  ) +
   scale_color_manual(values = colorpal) +
   scale_fill_manual(values = colorpal) +
+  geom_segment(
+    # Among-individual variance
+    aes(x = -.1, y = -1.9, yend = 1.9),
+    arrow = arrow(ends = "both", length = unit(.15, "inches")),
+    color = "purple3"
+  ) +
+  annotate(
+    "text",
+    x = 1,
+    y = .1,
+    label = "Among-individual \n variance (VI)",
+    color = "purple3",
+    size = 3
+  ) +
   labs(
     x = "Environmental gradient",
     y = "Phenotype",
@@ -102,7 +121,7 @@ fig.rn
 ggsave(plot = fig.rn, "outputs/figs/fig.rn.jpeg")
 
 # Both figures side-by-side
-fig.drc.vs.rn <- fig.drc + fig.rn
+fig.drc.vs.rn <- fig.drc + fig.rn + plot_annotation(tag_levels = 'A')
 ggsave(
   plot = fig.drc.vs.rn,
   "outputs/figs/fig.drc.vs.rn.jpeg",
