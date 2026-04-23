@@ -1,5 +1,5 @@
 library(tidyverse)
-library(drc)
+# library(drc)
 library(brms)
 library(ggdist)
 library(truncnorm)
@@ -10,38 +10,44 @@ library(GGally)
 library(tidybayes)
 library(modelr)
 
+# Load simulated datasets ----
+df.sim.vp <- read.csv("data/df.sim.vp.csv")
+df.sim.vg <- read.csv("data/df.sim.vg.csv")
+df.sim.vi <- read.csv("data/df.sim.vi.csv")
+df.sim.vi.long <- read.csv("data/df.sim.vi.long.csv")
+
+
+# Set plotting theme ----
+theme_custom <- function() {
+  theme_classic(16) +
+    theme(legend.position = "none")
+}
 # Dose-response form and parameter values ----
 sigma <- .1
 c <- 0 # bottom of the dose-response curve
 d <- 1 # top of the dose-response curve
 b <- 3 # slope of the dose-response curve
 e <- .3 # EC50 of the dose-response curve
-x <- seq(0, 1, by = .01)
+# x <- seq(0, 1, by = .01)
+# mu <- d / (1 + exp(b * log(x / e)))
 
-mu <- c + (d - c) / (1 + exp(b * log(x / e)))
-mu <- d / (1 + exp(b * log(x / e)))
+# Plot setupe
+# Upper rows
+# title = "Levels of organisation",
+# A) subtitle = "Phenotypic level"
+# B) subtitle = "Among-genotype level"
+# C) subtitle = "Among-phenotype level"
+# Lower rows
+# title = "What to report?",
+# A) subtitle = "Phenotypic variation in EC50"
+# B) subtitle = "Genetic variation in EC50"
+# C) subtitle = "Elevation and slope variation with dose"
 
-plot(x, mu, type = "l")
-
-# Figure: Prediction vs. Confidence Interval over EC50 ----
-## Simulate data for typical Dose-Response Experiment ----
-# 5 doses + 1 control
-
-set.seed(42)
-df.sim <- data.frame(x = seq(0, 1, length.out = 6)) %>% # Sample 6 values between [0;1] with equal spacing
-  mutate(x = case_when(x == 0 ~ 0.001, .default = x)) %>% # Replace dose = 0 with small value to avoid computational issues
-  mutate(mu = d / (1 + exp(b * log(x / e)))) %>% # Apply dose-response equation to all x-values
-  mutate(y = rlnorm(n(), log(mu), sigma)) %>% # Sample from log-normal distribution to keep y-values > 0
-  mutate(log_y = log(y))
-
-plot(y ~ x, df.sim)
-
-## brms estimation ----
-
-### Define brms model ----
+# Figure A: Phenotypic-level - upper panel ----
+## Define brms model ----
 # 3-parameter log-logistic function
 formula_drc <- bf(
-  log(y) ~ log(d / (1 + exp(b * (log(x) - log(e))))),
+  log(y) ~ log(d / (1 + exp(b * (log(Dose) - log(e))))),
   b + d + e ~ 1,
   nl = TRUE
 )
@@ -60,7 +66,7 @@ inits <- list(
 )
 init_list <- rep(list(inits), 4)
 
-### Plot priors ----
+## Plot priors ----
 priors %>%
   parse_dist() %>%
   filter(class == "b") %>%
@@ -73,10 +79,10 @@ priors %>%
   theme_bw(12) +
   theme(axis.text.y = element_text(angle = 90))
 
-### Run model on priors only ----
+## Run model on priors only ----
 brm.drc.prior <- brm(
   formula = formula_drc,
-  data = df.sim,
+  data = df.sim.vp,
   family = "gaussian",
   prior = priors,
   sample_prior = "only",
@@ -89,15 +95,15 @@ brm.drc.prior <- brm(
   file_refit = "always"
 )
 
-plot(brm.drc.prior)
-pp_check(brm.drc.prior, ndraws = 200)
+# plot(brm.drc.prior)
+# pp_check(brm.drc.prior, ndraws = 200)
 conditional_effects(brm.drc.prior, method = "posterior_predict")
 conditional_effects(brm.drc.prior, spaghetti = T, ndraws = 100)
 
-### Fit model to simulated data ----
+## Fit model to simulated data ----
 brm.drc <- brm(
   formula = formula_drc,
-  data = df.sim,
+  data = df.sim.vp,
   family = "gaussian",
   prior = priors,
   sample_prior = "yes",
@@ -116,32 +122,33 @@ pp_check(brm.drc, ndraws = 200)
 conditional_effects(brm.drc, method = "posterior_predict")
 CRI <- as.data.frame(posterior_summary(brm.drc))
 
-# Prediction intervals via posterior_predict
-x_new <- data.frame(x = seq(0, 1, by = 0.01)) %>%
-  mutate(x = case_when(x == 0 ~ 0.001, .default = x))
+## Compute CRI and prediction intervals via posterior_predict ----
+Dose_new <- data.frame(Dose = seq(0, 1, by = 0.01)) %>%
+  mutate(Dose = case_when(Dose == 0 ~ 0.001, .default = Dose))
 
-pred <- posterior_predict(brm.drc, newdata = x_new) # Prediction for the expected (mean) value for computing 95% CRI
-epred <- posterior_epred(brm.drc, newdata = x_new) # Predictions including residual error to compute 95% Prediction Intervals
+pred <- posterior_predict(brm.drc, newdata = Dose_new) # Prediction for the expected (mean) value for computing 95% CRI
+epred <- posterior_epred(brm.drc, newdata = Dose_new) # Predictions including residual error to compute 95% Prediction Intervals
 
 pred_df <- data.frame(
-  x = x_new$x,
+  Dose = Dose_new$Dose,
   y = apply(pred, 2, function(p) exp(median(p))),
   y_low = apply(pred, 2, function(p) exp(quantile(p, 0.025))),
   y_up = apply(pred, 2, function(p) exp(quantile(p, 0.975)))
 )
 
 epred_df <- data.frame(
-  x = x_new$x,
+  Dose = Dose_new$Dose,
   y = apply(epred, 2, function(p) exp(median(p))),
   y_low = apply(epred, 2, function(p) exp(quantile(p, 0.025))),
   y_up = apply(epred, 2, function(p) exp(quantile(p, 0.975)))
 )
 
-fig_predinterval <- ggplot(data = df.sim, aes(x = x, y = y)) +
+## Plot! ----
+fig_drc_vp.A.up <- ggplot(data = df.sim.vp, aes(x = Dose, y = y)) +
   # Fitted line
   geom_line(
     data = pred_df,
-    aes(x = x, y = y),
+    aes(x = Dose, y = y),
     linewidth = 1,
     color = "dodgerblue"
   ) +
@@ -159,21 +166,6 @@ fig_predinterval <- ggplot(data = df.sim, aes(x = x, y = y)) +
     alpha = .4,
     fill = "dodgerblue"
   ) +
-  geom_point(
-    data = CRI,
-    aes(x = CRI["b_e_Intercept", 1], y = .5),
-    color = "tomato2"
-  ) +
-  geom_errorbarh(
-    aes(
-      y = .5,
-      x = CRI["b_e_Intercept", 1],
-      xmin = CRI["b_e_Intercept", 3],
-      xmax = CRI["b_e_Intercept", 4],
-      width = 0
-    ),
-    color = "tomato2"
-  ) +
   # Data points
   geom_point(
     shape = 21,
@@ -182,99 +174,56 @@ fig_predinterval <- ggplot(data = df.sim, aes(x = x, y = y)) +
     size = 2,
     stroke = 1
   ) +
-  labs(x = "Dose", y = "Phenotype") +
-  theme_bw(12)
+  labs(
+    x = "Dose",
+    y = "Phenotype"
+  ) +
+  theme_custom()
+fig_drc_vp.A
 
-ggsave(filename = "outputs/figs/fig_predinterval.jpeg", fig_predinterval)
+# Figure A: Phenotypic-level - lower panel ----
+## Extract EC50 CI and PI (prediction interval) ----
+# EC50 distribution
+get_variables(brm.drc)
+post_draws.vp <- as_draws_df(brm.drc) %>%
+  select(b_e_Intercept) # Extract posterior distribution for e parameter (EC50)
+# Prediction interval
+pri_lower_bound <- epred_df %>%
+  filter(y_low <= .5)
+pri_lower_bound <- pri_lower_bound[1, ]$Dose # Extract lowest Dose < y = 0.5
+pri_upper_bound <- epred_df %>%
+  filter(y_up <= .5)
+pri_upper_bound <- pri_upper_bound[1, ]$Dose # Extract lowest Dose < y = 0.5
+pri_median <- epred_df %>%
+  filter(y <= .5)
+pri_median <- pri_median[1, ]$Dose # Extract lowest Dose < y = 0.5
 
-# Distribution of EC50 values
-# Extract posterior samples of e and its variance
-post <- as_draws_df(mod.brm)
-
-# Simulate new individual EC50s assuming e ~ lognormal(mu_e, sigma_e)
-e_dist <- rlnorm(
-  4000,
-  meanlog = mean(log(post$b_e_Intercept)),
-  sdlog = sd(log(post$b_e_Intercept))
+df.pri <- data.frame(
+  pri = pri_median,
+  pri_lower_bound = pri_lower_bound,
+  pri_upper_bound = pri_upper_bound
 )
-hist(e_dist)
 
-# Plot as a distribution
-ggplot(data.frame(e = e_dist), aes(x = e)) +
-  stat_halfeye(fill = "skyblue") +
-  theme_bw()
+## Plot ----
+# title = "What to report?",
+# subtitle = "Phenotypic variation in EC50"
 
-
-## drc estimation (TODO) ----
-mod.drm <- drm(y ~ x, data = df.sim, fct = LN.3()) # log-normal model with c = 0 and d = 1
-mod.drm <- drm(log_y ~ x, data = df.sim, fct = LL.3()) # Log-logistic model on log(y)
-
-summary(mod.drm)
-plot(mod.drm)
-coefs <- as.numeric(coef(mod.drm))
-CI <- confint(mod.drm, "e")
-x <- data.frame(x = seq(0, 1, by = .01))
-pred <- predict(mod.drm, newdata = x, interval = "prediction")
-pred <- data.frame(x = x, y = pred[, 1], y_low = pred[, 2], y_up = pred[, 3])
-
-ggplot(data = df.sim, aes(x = x, y = y)) +
-  geom_point(
-    shape = 21,
-    colour = "black",
-    fill = "white",
-    size = 2,
-    stroke = 1
+fig_drc_vp.A.low <- post_draws.vp %>%
+  ggplot(aes(x = b_e_Intercept, y = 0)) +
+  stat_pointinterval() +
+  # geom_linerange(
+  #   data = df.pri,
+  #   aes(y = 1, xmin = pri_lower_bound, xmax = pri_upper_bound)
+  # ) +
+  geom_pointrange(
+    data = df.pri,
+    aes(x = pri, y = 1, xmin = pri_lower_bound, xmax = pri_upper_bound)
   ) +
-  geom_line(
-    data = pred,
-    aes(x = x, y = y),
-    linewidth = 1,
-    color = "dodgerblue"
+  labs(
+    x = "EC50",
+    y = "Density"
   ) +
-  geom_ribbon(
-    data = pred,
-    aes(ymin = y_low, ymax = y_up),
-    alpha = .4,
-    fill = "dodgerblue"
-  ) +
-  geom_point(aes(x = coefs[3], y = .5), color = "tomato2") +
-  geom_errorbarh(
-    aes(y = .5, x = coefs[3], xmin = CI[, 1], xmax = CI[, 2], width = 0),
-    color = "tomato2"
-  ) +
-  theme_bw()
-
-## Old code ----
-x <- seq(0, 1, by = .15)
-
-mu <- c + (d - c) / (1 + exp(b * log(x / e)))
-mu <- d / (1 + exp(b * log(x / e)))
-plot(x, mu)
-
-set.seed(42)
-df <- data.frame(x = seq(0, 1, by = .01)) %>%
-  mutate(mu = d / (1 + exp(b * log(x / e)))) %>%
-  mutate(y = rlnorm(n(), log(mu), sigma)) %>%
-  mutate(y_low = qlnorm(p = .025, log(mu), sigma)) %>%
-  mutate(y_up = qlnorm(p = .975, log(mu), sigma))
-
-mod.drm <- drm(y ~ x, data = df, fct = LL.3())
-summary(mod.drm)
-coefs <- as.numeric(coef(mod.drm))
-CI <- confint(mod.drm, "e")
-
-
-df %>%
-  ggplot(aes(x = x, y = y)) +
-  geom_line(aes(x = x, y = mu), linewidth = 1, color = "dodgerblue") +
-  geom_point() +
-  geom_ribbon(aes(ymin = y_low, ymax = y_up), alpha = .4, fill = "dodgerblue") +
-  geom_point(aes(x = coefs[3], y = .5), color = "tomato2") +
-  geom_errorbarh(
-    aes(y = .5, x = coefs[3], xmin = CI[, 1], xmax = CI[, 2], width = 0),
-    color = "tomato2"
-  ) +
-  theme_bw()
+  theme_custom()
 
 # Figure: Genotype sensitivity ----
 Dose <- seq(0, 1, length.out = 6)
