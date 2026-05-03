@@ -85,7 +85,7 @@ df.sim.vg <- G %>%
   mutate(mu = d_g / (1 + exp(b_g * log(Dose / e_g)))) %>%
   mutate(y = rlnorm(n(), log(mu), sigma))
 
-write.csv(df.sim.vp, "data/df.sim.vg.csv")
+write.csv(df.sim.vg, "data/df.sim.vg.csv")
 
 
 # Among-individual level ----
