@@ -3,6 +3,7 @@ library(ggdist)
 library(viridis)
 library(patchwork)
 library(distributional)
+library(ggthemes)
 
 # Load simulated datasets ----
 df.sim.vp <- read.csv("data/df.sim.vp.csv")
@@ -23,8 +24,11 @@ c <- 0 # bottom of the dose-response curve
 d <- 1 # top of the dose-response curve
 b <- 3 # slope of the dose-response curve
 e <- .3 # EC50 of the dose-response curve
-# x <- seq(0, 1, by = .01)
-# mu <- d / (1 + exp(b * log(x / e)))
+CVi <- .1 # 10 % of variation around mean for all parameters
+sigma_d <- d * CVi # Upper bound variation
+sigma_b <- b * CVi # Rate variation
+sigma_e <- e * CVi # EC50 sensitivity variation
+rho <- .4 # moderate correlation among parameters
 
 # Plot setup
 # Upper rows
@@ -162,6 +166,7 @@ fig_drc_vp.A.low <- df.EC50dist.vp %>%
   labs(x = "Dose", y = "EC50", title = "Phenotypic variation in EC50") +
   theme_custom() +
   theme(legend.position = "none")
+fig_drc_vp.A.low
 
 ## Figure B: Among-genotypes (genetic variances and correlations) ----
 CV_e <- .2 # Define measurement error as coefficient of variation
@@ -179,7 +184,7 @@ df.sigma.cor <- data.frame(
 ) %>%
   mutate(sigma_e = abs(CV_e * values))
 
-df.sigma.cor %>%
+fig.sigma_g <- df.sigma.cor %>%
   filter(name == "sigma_EC50") %>%
   ggplot(aes(y = name, xdist = dist_normal(values, sigma_e))) +
   stat_halfeye() +
@@ -191,13 +196,16 @@ df.sigma.cor %>%
     axis.ticks.y = element_blank()
   )
 
-df.sigma.cor %>%
+fig.corr_g <- df.sigma.cor %>%
   filter(type == "Correlations") %>%
   ggplot(aes(y = name, xdist = dist_normal(values, sigma_e))) +
   stat_halfeye() +
-  labs(x = bquote(sigma[EC[50]]), y = "", title = "Genetic correlations") +
+  labs(x = "Correlation value", y = "", title = "Genetic correlations") +
   theme_custom() +
   theme(legend.position = "none")
+
+fig_drc_vg.B.low <- fig.sigma_g / fig.corr_g
+fig_drc_vg.B.low
 
 ## Figure C: Among-individuals (variance partitionning by dose) ----
 ### Simulation parameters ----
@@ -223,6 +231,7 @@ Sigma <- diag(sigmas) %*% rho_mat %*% diag(sigmas) # Covariance matrix
 # Individual slope (Vv x Vx + mu^2 * Vv)
 # Individual intercept (Vu + 2 * Cov(u,v))
 # within-individual (residual) variance (VR)
+VR <- .05 # Fix residual to constant value
 
 # Population slope variance = beta^2 * VD
 df.VD <- df.sim.vi %>%
@@ -296,15 +305,38 @@ df.var.comp <- left_join(df.VS, df.VD) %>%
   ) # Variance explained by among-individual slope differences
 df.var.comp
 
-df.var.comp %>%
+### Plot! ----
+fig_varcomp.stack <- df.var.comp %>%
   select(Group_n, VD, VI, VR) %>%
   pivot_longer(!Group_n, names_to = "type", values_to = "values") %>%
   ggplot(aes(x = Group_n, y = values, fill = type)) +
-  geom_bar(position = "fill", stat = "identity") +
+  geom_bar(
+    position = "stack",
+    stat = "identity",
+    color = "black",
+    linewidth = .4
+  ) +
+  scale_fill_wsj() +
   labs(x = "Dose", y = "Variance", title = "Variance partitioning by dose ") +
   theme_custom() +
   theme(legend.position = "none")
 
+fig_varcomp.R2 <- df.var.comp %>%
+  select(Group_n, VD, VI, VR) %>%
+  pivot_longer(!Group_n, names_to = "type", values_to = "values") %>%
+  ggplot(aes(x = Group_n, y = values, fill = type)) +
+  geom_bar(
+    position = "fill",
+    stat = "identity",
+    color = "black",
+    linewidth = .4
+  ) +
+  scale_fill_wsj() +
+  labs(x = "Dose", y = "Variance", title = "Variance explained by dose ") +
+  theme_custom() +
+  theme(legend.position = "none")
+
+fig_drc_vi.C.low <- fig_varcomp.stack / fig_varcomp.R2
 
 # Combine into 1 figure ----
 fig_metrics.up <- (fig_drc_vp.A.up + fig_drc_vg.B.up + fig_drc_vi.C.up)
@@ -315,10 +347,21 @@ fig_metrics.up <- fig_metrics.up +
   )
 fig_metrics.up
 
+fig_metrics.low <- (fig_drc_vp.A.low + fig_drc_vg.B.low + fig_drc_vi.C.low)
+fig_metrics.low <- fig_metrics.low +
+  plot_annotation(
+    title = "What to report?",
+    theme = theme(plot.title = element_text(size = 20))
+  )
+fig_metrics.low
+
+fig_metrics <- fig_metrics.up / fig_metrics.low
+fig_metrics
+
 ggsave(
   filename = "outputs/figs/fig_metrics.jpeg",
-  fig_metrics.up,
-  height = 8,
-  width = 16,
+  fig_metrics,
+  height = 18,
+  width = 24,
   units = "cm"
 )
