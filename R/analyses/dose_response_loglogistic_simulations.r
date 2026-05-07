@@ -7,6 +7,9 @@ library(distributional)
 # individual-level differences in dose responses
 # This script is only used to generate the datasets found in the data subfolder
 
+# Import convenience functions
+source("R/funs/dose_response_functions.R")
+
 # Dose-response form and parameter values ----
 sigma <- .1
 c <- 0 # bottom of the dose-response curve
@@ -21,7 +24,7 @@ mu <- d / (1 + exp(b * log(x / e)))
 plot(x, mu, type = "l")
 
 # Phenotypic level ----
-# Simulate data for typical Dose-Response Experiment
+## Simulate data for typical Dose-Response Experiment -----
 # 5 doses + 1 control
 
 set.seed(42)
@@ -33,6 +36,52 @@ df.sim.vp <- data.frame(Dose = seq(0, 1, length.out = 6)) %>% # Sample 6 values 
 
 plot(y ~ Dose, df.sim.vp)
 write.csv(df.sim.vp, "data/df.sim.vp.csv")
+
+## Monte Carlo simulations to recover confidence and prediction intervals ----
+cv <- 0.05 # 5 % coefficient of variation on each parameter
+n_mc <- 20000
+set.seed(42)
+
+dose_seq <- seq(0.001, 1, length.out = 300)
+
+# Sample parameters (lognormal to keep values positive)
+d_s <- rlnorm(n_mc, meanlog = log(d), sdlog = cv)
+b_s <- rlnorm(n_mc, meanlog = log(b), sdlog = cv)
+e_s <- rlnorm(n_mc, meanlog = log(e), sdlog = cv)
+
+# Evaluate μ for every MC draw × every dose
+# Result: n_mc × length(dose_seq) matrix
+mu_mat <- vapply(
+  seq_len(n_mc),
+  function(i) drc_mu(dose_seq, d_s[i], b_s[i], e_s[i]),
+  numeric(length(dose_seq))
+) |>
+  t() # → [n_mc × n_dose]
+
+# Confidence interval = quantiles of μ across MC draws
+ci_low <- apply(mu_mat, 2, quantile, 0.025)
+ci_up <- apply(mu_mat, 2, quantile, 0.975)
+
+# Prediction interval = CI propagated through the lognormal noise ────────
+# For each MC draw, simulate one observation per dose, then take quantiles.
+# rlnorm(n, log(mu), sigma) on the whole matrix at once:
+y_pred_mat <- matrix(
+  rlnorm(n_mc * length(dose_seq), meanlog = log(mu_mat), sdlog = sigma),
+  nrow = n_mc
+)
+pi_low <- apply(y_pred_mat, 2, quantile, 0.025)
+pi_up <- apply(y_pred_mat, 2, quantile, 0.975)
+
+# Assemble into dataframe
+df.sim.lines.vp <- tibble(
+  Dose = dose_seq,
+  mu = drc_mu(dose_seq, d, b, e), # nominal mean line
+  ci_low = ci_low,
+  ci_up = ci_up,
+  pi_low = pi_low,
+  pi_up = pi_up
+)
+write.csv(df.sim.lines.vp, "data/df.sim.lines.vp.csv")
 
 # Among-genotype level ----
 Dose <- seq(0, 1, length.out = 6)
