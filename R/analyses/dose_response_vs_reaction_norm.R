@@ -31,18 +31,90 @@ df.drc <- data.frame(x = x, y = mu)
 fig.drc <- df.drc %>%
   ggplot(aes(x = x, y = y)) +
   geom_line(color = "dodgerblue", linewidth = 1.5) +
-  geom_vline(
-    xintercept = e,
-    color = "darkred",
-    linewidth = .5,
-    linetype = "dashed"
+  # Add ymax
+  annotate(
+    geom = "text",
+    x = 0,
+    y = .9,
+    fontface = "bold",
+    label = expression(y[max]),
+    size = 5,
+    color = "dodgerblue"
   ) +
-  annotate("text", x = e, y = .12, label = "EC50") +
+  # Add ymin
+  annotate(
+    geom = "text",
+    x = 0,
+    y = 0,
+    fontface = "bold",
+    label = expression(y[min]),
+    size = 5,
+    color = "dodgerblue"
+  ) +
+  # Add EC50
+  annotate(
+    geom = "text",
+    x = .3,
+    y = -.05,
+    fontface = "bold",
+    label = expression(paste(EC[50])),
+    size = 5,
+    color = "darkred"
+  ) +
+  annotate(
+    geom = "segment",
+    x = .3,
+    y = 0,
+    yend = .5,
+    size = 1,
+    color = "darkred"
+  ) +
+  annotate(
+    geom = "segment",
+    x = 0,
+    xend = .3,
+    y = .5,
+    yend = .5,
+    fontface = "bold",
+    label = expression(paste(EC[50])),
+    size = 1,
+    color = "darkred"
+  ) +
+  # Add EC50 point
+  geom_point(aes(x = .3, y = .5), size = 5, color = "darkred") +
+  # Add 50% of y
+  annotate(
+    geom = "text",
+    x = .1,
+    y = .4,
+    size = 4,
+    color = "darkred",
+    label = expression(paste(1 / 2(y[max] - y[min])))
+  ) +
+  # Add Beta parameter
+  annotate(
+    geom = "text",
+    x = .4,
+    y = .5,
+    label = expression(beta)
+  ) +
+  annotate(
+    geom = "segment",
+    x = 0.25,
+    xend = 0.35,
+    y = .625,
+    yend = .375,
+    arrow = arrow(
+      ends = "both",
+      length = unit(0.1, "inches"),
+      angle = 30
+    ),
+    size = 1.2
+  ) +
   labs(x = "Dose", y = "Phenotype", title = "Dose Response Approach") +
   theme_custom()
 fig.drc
 ggsave(fig.drc, "outputs/figs/fig.drc.jpeg")
-
 
 # Reaction norm figure ----
 n_id <- 4
@@ -120,13 +192,13 @@ fig.rn <- df.rn %>%
 fig.rn
 ggsave(plot = fig.rn, "outputs/figs/fig.rn.jpeg")
 
-# Both figures side-by-side
+# Both figures side-by-side ----
 fig.drc.vs.rn <- fig.drc + fig.rn + plot_annotation(tag_levels = 'A')
 ggsave(
   plot = fig.drc.vs.rn,
   "outputs/figs/fig.drc.vs.rn.jpeg",
-  height = 4,
-  width = 8
+  height = 5,
+  width = 10
 )
 
 
