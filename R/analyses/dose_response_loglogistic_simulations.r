@@ -12,14 +12,14 @@ source("R/funs/dose_response_functions.R")
 
 # Dose-response form and parameter values ----
 sigma <- .1
-c <- 0 # bottom of the dose-response curve
-d <- 1 # top of the dose-response curve
-b <- 3 # slope of the dose-response curve
-e <- .3 # EC50 of the dose-response curve
-x <- seq(0, 1, by = .01)
+ymin <- 0 # bottom of the dose-response curve
+ymax <- 100 # top of the dose-response curve
+b <- 5 # slope of the dose-response curve
+e <- 50 # EC50 of the dose-response curve
+x <- seq(0, 100, by = .01)
 
-mu <- c + (d - c) / (1 + exp(b * log(x / e)))
-mu <- d / (1 + exp(b * log(x / e)))
+mu <- ymin + (ymax - ymin) / (1 + exp(b * log(x / e)))
+mu <- ymax / (1 + exp(b * log(x / e)))
 
 plot(x, mu, type = "l")
 
@@ -28,9 +28,9 @@ plot(x, mu, type = "l")
 # 5 doses + 1 control
 
 set.seed(42)
-df.sim.vp <- data.frame(Dose = seq(0, 1, length.out = 6)) %>% # Sample 6 values between [0;1] with equal spacing
+df.sim.vp <- data.frame(Dose = seq(0, 100, length.out = 6)) %>% # Sample 6 values between [0;1] with equal spacing
   mutate(Dose = case_when(Dose == 0 ~ 0.001, .default = Dose)) %>% # Replace dose = 0 with small value to avoid computational issues
-  mutate(mu = d / (1 + exp(b * log(Dose / e)))) %>% # Apply dose-response equation to all x-values
+  mutate(mu = ymax / (1 + exp(b * log(Dose / e)))) %>% # Apply dose-response equation to all x-values
   mutate(y = rlnorm(n(), log(mu), sigma)) %>% # Sample from log-normal distribution to keep y-values > 0
   mutate(log_y = log(y))
 
@@ -42,10 +42,10 @@ cv <- 0.05 # 5 % coefficient of variation on each parameter
 n_mc <- 20000
 set.seed(42)
 
-dose_seq <- seq(0.001, 1, length.out = 300)
+dose_seq <- seq(0.001, 100, length.out = 300)
 
 # Sample parameters (lognormal to keep values positive)
-d_s <- rlnorm(n_mc, meanlog = log(d), sdlog = cv)
+ymax_s <- rlnorm(n_mc, meanlog = log(ymax), sdlog = cv)
 b_s <- rlnorm(n_mc, meanlog = log(b), sdlog = cv)
 e_s <- rlnorm(n_mc, meanlog = log(e), sdlog = cv)
 
@@ -53,7 +53,7 @@ e_s <- rlnorm(n_mc, meanlog = log(e), sdlog = cv)
 # Result: n_mc × length(dose_seq) matrix
 mu_mat <- vapply(
   seq_len(n_mc),
-  function(i) drc_mu(dose_seq, d_s[i], b_s[i], e_s[i]),
+  function(i) drc_mu(dose_seq, ymax_s[i], b_s[i], e_s[i]),
   numeric(length(dose_seq))
 ) |>
   t() # → [n_mc × n_dose]
@@ -75,7 +75,7 @@ pi_up <- apply(y_pred_mat, 2, quantile, 0.975)
 # Assemble into dataframe
 df.sim.lines.vp <- tibble(
   Dose = dose_seq,
-  mu = drc_mu(dose_seq, d, b, e), # nominal mean line
+  mu = drc_mu(dose_seq, ymax, b, e), # nominal mean line
   ci_low = ci_low,
   ci_up = ci_up,
   pi_low = pi_low,
@@ -84,28 +84,28 @@ df.sim.lines.vp <- tibble(
 write.csv(df.sim.lines.vp, "data/df.sim.lines.vp.csv")
 
 # Among-genotype level ----
-Dose <- seq(0, 1, length.out = 6)
-n_g <- 5 # 5 genotypes
+Dose <- seq(0, 100, length.out = 6)
+n_g <- 10 # 10 genotypes
 CVa <- .1 # 10 % of variation around the mean for all parameters
-sigma_d <- d * CVa # Upper bound variation
+sigma_ymax <- ymax * CVa # Upper bound variation
 sigma_b <- b * CVa # Rate variation
 sigma_e <- e * CVa # EC50 sensitivity variation
 rho <- .4 # moderate correlation among parameters
 # Genotypes with higher basal expression are less sensitive
 # r_dxe = rho: higher basal expression <-> higher EC50
-# r_dxb = -rho : higher basal expression <-> shallower slope
-# r_bxe = -rho : higher EC50 <-> shallower slope
+# r_dxb = rho : higher basal expression <-> higher slope
+# r_bxe = rho : higher EC50 <-> higher slope
 
 set.seed(42)
-d_g <- rtruncnorm(n_g, mean = d, sd = sigma_d, a = 0)
+ymax_g <- rtruncnorm(n_g, mean = ymax, sd = sigma_ymax, a = 0)
 b_g <- rtruncnorm(n_g, mean = b, sd = sigma_b, a = 0)
 e_g <- rtruncnorm(n_g, mean = e, sd = sigma_e, a = 0)
 
 # Store parameter means as vectors and covariances as matrix
-Mu <- c(d, b, e)
-sigmas <- c(sigma_d, sigma_b, sigma_e) # 10 % CV around the mean
-names <- c("sigma_d", "sigma_b", "sigma_e")
-rho_mat <- matrix(c(1, -rho, rho, -rho, 1, -rho, rho, -rho, 1), nrow = 3) # Correlation matrix
+Mu <- c(ymax, b, e)
+sigmas <- c(sigma_ymax, sigma_b, sigma_e) # 10 % CV around the mean
+names <- c("sigma_ymax", "sigma_b", "sigma_e")
+rho_mat <- matrix(c(1, rho, rho, rho, 1, rho, rho, rho, 1), nrow = 3) # Correlation matrix
 colnames(rho_mat) <- names
 rownames(rho_mat) <- names
 Sigma <- diag(sigmas) %*% rho_mat %*% diag(sigmas) # Covariance matrix
@@ -138,24 +138,24 @@ write.csv(df.sim.vg, "data/df.sim.vg.csv")
 
 
 # Among-individual level ----
-Dose <- seq(0, 1, length.out = 6)
+Dose <- seq(0, 100, length.out = 6)
 n_id <- 20 # 20 individuals per doses
 CVi <- .1 # 10 % of variation around mean for all parameters
-sigma_d <- d * CVi # Upper bound variation
+sigma_ymax <- ymax * CVi # Upper bound variation
 sigma_b <- b * CVi # Rate variation
 sigma_e <- e * CVi # EC50 sensitivity variation
 rho <- .4 # moderate correlation among parameters
 
 set.seed(42)
-d_i <- rtruncnorm(n_id, mean = d, sd = sigma_d, a = 0)
+ymax_i <- rtruncnorm(n_id, mean = ymax, sd = sigma_ymax, a = 0)
 b_i <- rtruncnorm(n_id, mean = b, sd = sigma_b, a = 0)
 e_i <- rtruncnorm(n_id, mean = e, sd = sigma_e, a = 0)
 
 # Store parameter means as vectors and covariances as matrix
-Mu <- c(d, b, e)
-sigmas <- c(sigma_d, sigma_b, sigma_e) # 10 % CV around the mean
-rho_mat <- matrix(c(1, -rho, rho, -rho, 1, -rho, rho, -rho, 1), nrow = 3)
-names <- c("sigma_d", "sigma_b", "sigma_e")
+Mu <- c(ymax, b, e)
+sigmas <- c(sigma_ymax, sigma_b, sigma_e) # 10 % CV around the mean
+rho_mat <- matrix(c(1, rho, rho, rho, 1, rho, rho, rho, 1), nrow = 3)
+names <- c("sigma_ymax", "sigma_b", "sigma_e")
 colnames(rho_mat) <- names
 rownames(rho_mat) <- names
 Sigma <- diag(sigmas) %*% rho_mat %*% diag(sigmas) # Covariance matrix
@@ -182,7 +182,7 @@ ID %>%
 # Apply dose-response formula per individual over the dose gradient
 df.sim.vi <- ID %>%
   pivot_longer(cols = c(assigned_dose:control_dose), values_to = "Dose") %>%
-  mutate(mu = d_i / (1 + exp(b_i * log(Dose / e_i)))) %>%
+  mutate(mu = ymax_i / (1 + exp(b_i * log(Dose / e_i)))) %>%
   mutate(y = rlnorm(n(), log(mu), sigma)) %>%
   mutate(
     Phase = as.factor(case_when(Dose == 0.001 ~ "Pre", .default = "Post"))
