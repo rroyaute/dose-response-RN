@@ -11,10 +11,10 @@ library(distributional)
 source("R/funs/dose_response_functions.R")
 
 # Dose-response form and parameter values ----
-sigma <- .1
+sigma <- .15
 ymin <- 0 # bottom of the dose-response curve
 ymax <- 100 # top of the dose-response curve
-b <- 5 # slope of the dose-response curve
+b <- 8 # slope of the dose-response curve
 e <- 50 # EC50 of the dose-response curve
 x <- seq(0, 100, by = .01)
 
