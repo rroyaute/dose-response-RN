@@ -245,32 +245,3 @@ ggsave(
   height = 5,
   width = 10
 )
-
-
-# Old code ----
-sigma_w <- .2 # within-individual (residual) variance
-sigma_i <- 1 # among-individual variance
-sigma_s <- .3 # slope variance
-rho <- .8 # slope-intercept correlation
-
-mu <- c(b0, b1) # vector of means
-sigmas <- c(sigma_i, sigma_s) # vector of SDs
-rho_mat <- matrix(
-  c(
-    1,
-    rho, # correlation matrix
-    rho,
-    1
-  ),
-  nrow = 2
-)
-Sigma <- diag(sigmas) %*% rho_mat %*% diag(sigmas) # Covariance matrix
-
-# Generate dataframe for 4 individuals with specific intercept and slope values
-set.seed(123456)
-ID <- MASS::mvrnorm(n_id, mu, Sigma) %>%
-  data.frame() %>%
-  set_names("b0_i", "b1_i") %>%
-  mutate(ID = 1:n_id)
-
-# Simulate individual values over the environmental gradient
