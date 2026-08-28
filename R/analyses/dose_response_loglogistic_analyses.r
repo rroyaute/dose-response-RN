@@ -7,7 +7,6 @@ library(truncnorm)
 library(ggthemes)
 library(geomtextpath)
 
-
 # Load simulated datasets ----
 df.sim.vp <- read.csv("data/df.sim.vp.csv")
 df.sim.lines.vp <- read.csv("data/df.sim.lines.vp.csv")
@@ -27,10 +26,10 @@ ymin <- 0 # bottom of the dose-response curve
 ymax <- 100 # top of the dose-response curve
 b <- 8 # slope of the dose-response curve
 e <- 50 # EC50 of the dose-response curve
-CVi <- .1 # 10 % of variation around mean for all parameters
-sigma_ymax <- ymax * CVi # Upper bound variation
-sigma_b <- b * CVi # Rate variation
-sigma_e <- e * CVi # EC50 sensitivity variation
+CV <- .1 # 10 % of variation around mean for all parameters
+sigma_ymax <- ymax * CV # Upper bound variation
+sigma_b <- b * CV # Rate variation
+sigma_e <- e * CV # EC50 sensitivity variation
 rho <- .4 # moderate correlation among parameters
 
 # Plot setup
@@ -69,17 +68,7 @@ fig_drc_vp.A.up <- ggplot(data = df.sim.lines.vp, aes(x = Dose, y = mu)) +
     linewidth = 1,
     color = "dodgerblue"
   ) +
-  # Data points
-  geom_point(
-    data = df.sim.vp,
-    aes(x = Dose, y = y),
-    shape = 21,
-    colour = "black",
-    fill = "white",
-    size = 2,
-    stroke = 1
-  ) +
-  # ylim(0, 1.5) +
+  ylim(0, 150) +
   labs(
     x = "Dose",
     y = "Phenotype",
@@ -89,14 +78,18 @@ fig_drc_vp.A.up <- ggplot(data = df.sim.lines.vp, aes(x = Dose, y = mu)) +
 fig_drc_vp.A.up
 
 ## Figure B: Among-genotypes ----
-df.sim.lines.vg <- df.sim.vg %>%
+# Select 2 least and most sensitive 2 genotypes (highest/lowest EC50)
+df.sim.vg_sample <- df.sim.vg %>%
+  filter(color_index %in% c(1, 2, 8, 10))
+
+df.sim.lines.vg <- df.sim.vg_sample %>%
   expand(
     nesting(G, color_index, d_g, b_g, e_g),
     Dose = seq(0, 100, by = 0.01)
   ) %>%
   mutate(mu = d_g / (1 + exp(b_g * log(Dose / e_g))))
 
-pal <- ltc(heatmap3, n = 10, type = "continuous")
+pal <- ltc(heatmap2, n = 4, type = "continuous")
 
 fig_drc_vg.B.up <- ggplot(
   df.sim.lines.vg,
@@ -115,26 +108,37 @@ fig_drc_vg.B.up <- ggplot(
     alpha = .8
   ) +
   geom_point(
-    data = df.sim.vg,
+    data = df.sim.vg_sample,
     aes(y = d_g / 2, x = e_g, color = factor(color_index)),
     size = 2.5,
     shape = 21,
     fill = "white",
     alpha = .8
   ) +
-  # scale_color_viridis_d(option = "H", direction = -1, begin = .2, end = .8) +
   scale_color_manual(values = pal) +
-  # ylim(0, 1.5) +
+  ylim(0, 150) +
   labs(x = "Dose", y = "Phenotype", title = "B) Among-genotypes") +
   theme_custom() +
   theme(legend.position = "none")
 fig_drc_vg.B.up
 
 ## Figure C: Among-individuals ----
+# Sample top 2 and bottom 2 individuals in each dose group
+df.sim.vi_sample_post <- df.sim.vi %>%
+  filter(Phase == "Post") %>%
+  mutate(rank_y = rank(y), .by = Group_f) %>%
+  filter(rank_y %in% c(1, 2, 18, 20))
+df.sim.vi_sample_pre <- df.sim.vi %>%
+  filter(Phase == "Pre") %>%
+  filter(ID %in% df.sim.vi_sample_post$ID)
+# Attach control value
+df.sim.vi_sample <- rbind(df.sim.vi_sample_pre, df.sim.vi_sample_post[, 1:14])
+
+# Average undelrying dose-response
 df.sim.lines.vi <- data.frame(Dose = seq(0, 100, by = 0.01)) %>%
   mutate(y = ymax / (1 + exp(b * log(Dose / e))))
 
-fig_drc_vi.C.up <- ggplot(df.sim.vi, aes(y = y, x = Dose)) +
+fig_drc_vi.C.up <- ggplot(df.sim.vi_sample, aes(y = y, x = Dose)) +
   geom_line(linewidth = .5, aes(group = ID), alpha = .15) +
   geom_point(size = 2.5, shape = 21, fill = "white", alpha = .8) +
   geom_line(
@@ -143,75 +147,37 @@ fig_drc_vi.C.up <- ggplot(df.sim.vi, aes(y = y, x = Dose)) +
     linewidth = 1,
     color = "dodgerblue"
   ) +
-  # ylim(0, 1.5) +
+  # facet_wrap(~Group_f) +
+  # ylim(0, 150) +
   labs(x = "Dose", y = "Phenotype", title = "C) Among-individuals") +
   theme_custom() +
   theme(legend.position = "none")
-# fig_drc_vi.C.up <- fig_drc_vi.C.up + plot_annotation()
 fig_drc_vi.C.up
 
 # Lower pannel: Parameters to report ----
 ## Figure A: Phenotypic-level (CI and PRI) ----
-CV_e <- .05 # Define measurement error as coefficient of variation
-n_draws <- 20000 # Number of random draws
-# Random draws for each dose-response parameter
-ymax_s <- rlnorm(n_draws, meanlog = log(ymax), sdlog = CV_e)
-b_s <- rlnorm(n_draws, meanlog = log(b), sdlog = CV_e)
-e_s <- rlnorm(n_draws, meanlog = log(e), sdlog = CV_e)
+# CVR as a function of dose
+df.sim.cvr <- df.sim.lines.vp %>%
+  select(Dose, mu, pi_low, pi_up) %>%
+  summarise(
+    mu = mu,
+    sdR = pi_up - pi_low, # Approximate residual variance as prediction interval range
+    CVR = sdR / mu,
+    .by = Dose
+  )
 
-# Find doses for which y = d/2 among prediction draws
-# Dose_EC50 = e * exp(log(2*exp(epsilon) - 1)/b)
-# Where epsilon is random noise parameter taken from rnorm(0, sigma)
-epsilon_s <- rnorm(n_draws, 0, sigma)
-prod <- 2 * exp(epsilon_s) - 1 # Take only positive values for this product
-valid <- prod > 0 # Take only positive values
-ec50_pi_vec <- e_s[valid] * exp(log(prod[valid]) / b_s[valid])
-
-df.EC50dist.vp <- data.frame(
-  param = c(
-    rep("Prediction interval", n_draws),
-    rep("Confidence interval", n_draws)
-  ),
-  EC50_dist = c(ec50_pi_vec, e_s)
-)
-
-fig_drc_vp.A.low <- df.EC50dist.vp %>%
-  ggplot(aes(x = EC50_dist, y = param)) +
-  stat_halfeye() +
-  labs(x = "Dose", y = "EC50", title = "Phenotypic variation in EC50") +
+fig_drc_vp.A.low <- df.sim.cvr %>%
+  ggplot(aes(x = Dose, y = sdR^2)) +
+  geom_line(linewidth = 1) +
+  scale_color_wsj() +
+  ylab("Total Variance in Phenotype") +
   theme_custom() +
-  theme(legend.position = "none")
+  theme(
+    legend.position = "none"
+  )
 fig_drc_vp.A.low
 
 ## Figure B: Among-genotypes (genetic variances and correlations) ----
-### Genetic variation and Credible Intervals (simulated) ----
-CV_e <- .1 # Define measurement error as coefficient of variation
-df.sigma.cor <- data.frame(
-  values = c(100.00, 0.64, 25.00, 0.4, 0.4, 0.4),
-  type = c(rep("Standard deviations", 3), rep("Correlations", 3)),
-  name = c(
-    "sigma_ymax",
-    "sigma_b",
-    "sigma_e",
-    "ymax x b",
-    "ymax x e",
-    "b x e"
-  )
-) %>%
-  mutate(sigma_e = abs(CV_e * values))
-
-fig.sigma_g <- df.sigma.cor %>%
-  filter(name == "sigma_e") %>%
-  ggplot(aes(y = name, xdist = dist_normal(values, sigma_e))) +
-  stat_halfeye() +
-  labs(x = bquote(sigma[EC[50]]), y = "", title = "Genetic variation") +
-  theme_custom() +
-  theme(
-    legend.position = "none",
-    axis.text.y = element_blank(),
-    axis.ticks.y = element_blank()
-  )
-
 #### Change in Additive genetic variance (CVa) with dose ----
 # Sample large amount of genotypes to recreate genetic variance
 sigma <- .05
@@ -310,7 +276,7 @@ fig.lncva <- df.sim.vg.2.sum.long %>%
 fig.lncva
 
 #### Plot! -----
-fig_drc_vg.B.low <- fig.sigma_g / fig.lncva
+fig_drc_vg.B.low <- fig.lncva
 fig_drc_vg.B.low
 
 ## Figure C: Among-individuals (variance partitionning by dose) ----
@@ -443,7 +409,7 @@ fig_varcomp.lnCV <- df.var.comp %>%
 # theme(legend.position = "none")
 fig_varcomp.lnCV
 
-fig_drc_vi.C.low <- fig_varcomp.stack / fig_varcomp.lnCV
+fig_drc_vi.C.low <- fig_varcomp.stack # / fig_varcomp.lnCV
 fig_drc_vi.C.low
 
 # Combine into 1 figure ----
@@ -469,7 +435,7 @@ fig_metrics
 ggsave(
   filename = "outputs/figs/fig_metrics.jpeg",
   fig_metrics,
-  height = 37,
-  width = 37,
+  height = 20,
+  width = 25,
   units = "cm"
 )
