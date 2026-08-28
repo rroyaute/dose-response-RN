@@ -114,20 +114,27 @@ fig.drc <- df.drc %>%
   labs(x = "Dose", y = "Phenotype", title = "Dose Response Approach") +
   theme_custom()
 fig.drc
-ggsave(fig.drc, "outputs/figs/fig.drc.jpeg")
+ggsave(filename = "outputs/figs/fig.drc.jpeg", fig.drc)
 
 # Reaction norm figure ----
 n_id <- 4
 x <- seq(-2, 2, by = .01) # Environmental gradient
-sigma_w <- .3 # Within-individual (residual) variance
+sigma_R <- .3 # residual (within-unit) standard deviation
 b0 <- 0 # Average phenotype at the center of the environmental gardient (x = .5)
 b1 <- -.5 # Average slope
+
+# ID <- data.frame(
+#   ID = 1:n_id,
+#   b0_i = c(-2, -1, 1, 2),
+#   b1_i = c(-.5, -.2, .2, .5)
+# )
 
 ID <- data.frame(
   ID = 1:n_id,
   b0_i = c(-2, -1, 1, 2),
-  b1_i = c(-.5, -.2, .2, .5)
+  b1_i = c(.5, .2, -.1, -.2)
 )
+cor(ID$b0_i, ID$b1_i) # Slope-intercept correlation
 
 df.rn <- ID %>%
   expand(nesting(ID, b0_i, b1_i), x = x) %>%
@@ -147,9 +154,17 @@ fig.rn <- df.rn %>%
     color = factor(ID),
     fill = factor(ID)
   )) +
-  # Individual reaction norms
+  # Average reaction norm
   geom_abline(intercept = b0, slope = b1, linewidth = 1.5) +
-  # Individual reaction norms
+  geom_point(
+    data = ID,
+    aes(x = 0, y = b0),
+    size = 4,
+    shape = 21,
+    fill = "white",
+    color = "black"
+  ) +
+  # Individual unit reaction norms
   geom_line(linewidth = 1.5) +
   # Individual averages
   geom_point(
@@ -159,9 +174,7 @@ fig.rn <- df.rn %>%
     shape = 21,
     fill = "white"
   ) +
-  # Individual points
-  geom_point(data = df.rn.subset, aes(x = x, y = y), size = 3, alpha = .4) +
-  # Within-individual variation ribbon (centered around each individual)
+  # Within-unit variation ribbon (centered around each experimental unit)
   geom_ribbon(
     aes(xmin = -2, xmax = 2, ymin = yhat - 2 * sigma, ymax = yhat + 2 * sigma),
     alpha = .2,
@@ -169,19 +182,51 @@ fig.rn <- df.rn %>%
   ) +
   scale_color_manual(values = colorpal) +
   scale_fill_manual(values = colorpal) +
+  # Among-unit variance
   geom_segment(
-    # Among-individual variance
     aes(x = -.1, y = -1.9, yend = 1.9),
     arrow = arrow(ends = "both", length = unit(.15, "inches")),
     color = "purple3"
   ) +
   annotate(
     "text",
-    x = 1,
-    y = .1,
-    label = "Among-individual \n variance (VI)",
+    x = -.35,
+    y = .7,
+    label = expression(V[U]),
     color = "purple3",
-    size = 3
+    size = 6
+  ) +
+  # Residual variance
+  geom_segment(
+    aes(x = 2.2, y = .3, yend = .9),
+    arrow = arrow(ends = "both", length = unit(.1, "inches")),
+    color = "#098154",
+  ) +
+  annotate(
+    "text",
+    x = 2.2,
+    y = 1.2,
+    label = expression(V[R]),
+    color = "#098154",
+    size = 6
+  ) +
+  # Average intercept (b0)
+  annotate(
+    "text",
+    x = 0.2,
+    y = .3,
+    label = expression(beta[0]),
+    color = "black",
+    size = 6
+  ) +
+  # Average slope (b1)
+  annotate(
+    "text",
+    x = 2.2,
+    y = -.6,
+    label = expression(beta[1]),
+    color = "black",
+    size = 6
   ) +
   labs(
     x = "Environmental gradient",
