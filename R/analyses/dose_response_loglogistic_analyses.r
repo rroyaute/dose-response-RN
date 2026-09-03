@@ -8,9 +8,13 @@ library(ggthemes)
 library(geomtextpath)
 
 # Load simulated datasets ----
-df.sim.vp <- read.csv("data/df.sim.vp.csv")
-df.sim.lines.vp <- read.csv("data/df.sim.lines.vp.csv")
+# df.sim.vp <- read.csv("data/df.sim.vp.csv")
+df.sim.vp.pred <- read.csv("data/df.sim.vp.pred.csv")
+df.intervals.vp <- read.csv("data/df.intervals.vp.csv")
+# df.sim.lines.vp <- read.csv("data/df.sim.lines.vp.csv")
+
 df.sim.vg <- read.csv("data/df.sim.vg.csv")
+
 df.sim.vi <- read.csv("data/df.sim.vi.csv")
 df.sim.vi.long <- read.csv("data/df.sim.vi.long.csv")
 
@@ -18,7 +22,13 @@ df.sim.vi.long <- read.csv("data/df.sim.vi.long.csv")
 # Set plotting theme ----
 theme_custom <- function() {
   theme_classic(12) +
-    theme(legend.position = "none")
+    theme(
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      axis.text.y = element_blank(),
+      axis.ticks.y = element_blank(),
+      legend.position = "none"
+    )
 }
 # Dose-response form and parameter values ----
 sigma <- .15
@@ -46,33 +56,24 @@ rho <- .4 # moderate correlation among parameters
 
 # Upper pannel: Dose response depending on biological level of organisation ----
 ## Figure A: Phenotypic-level ----
-fig_drc_vp.A.up <- ggplot(data = df.sim.lines.vp, aes(x = Dose, y = mu)) +
-  # 95 % Prediction interval (wider, lighter)
+fig_drc_vp.A.up <- df.sim.vp.pred %>%
+  ggplot(aes(x = Dose, y = mu)) +
+  geom_line(color = "dodgerblue", linewidth = 1) +
   geom_ribbon(
-    data = df.sim.lines.vp,
-    aes(ymin = pi_low, ymax = pi_up),
-    alpha = .20,
-    fill = "dodgerblue"
-  ) +
-  # 95 % Confidence interval on the mean (narrower, darker)
-  geom_ribbon(
-    data = df.sim.lines.vp,
-    aes(ymin = ci_low, ymax = ci_up),
+    aes(ymin = yhat_low, ymax = yhat_up),
     alpha = .45,
     fill = "dodgerblue"
   ) +
-  # Fitted line
-  geom_line(
-    data = df.sim.lines.vp,
-    aes(x = Dose, y = mu),
-    linewidth = 1,
-    color = "dodgerblue"
+  geom_ribbon(
+    aes(ymin = y_low, ymax = y_up),
+    alpha = .25,
+    fill = "dodgerblue"
   ) +
   ylim(0, 150) +
   labs(
     x = "Dose",
     y = "Phenotype",
-    title = "A) Dose-response curve\n(Phenotypic level)"
+    title = "A) Classical \n dose-response"
   ) +
   theme_custom()
 fig_drc_vp.A.up
@@ -96,7 +97,7 @@ fig_drc_vg.B.up <- ggplot(
   aes(y = y, x = Dose)
 ) +
   geom_line(
-    data = df.sim.lines.vp,
+    data = df.sim.vp.pred,
     aes(y = mu, x = Dose),
     linewidth = 2,
     color = "dodgerblue"
@@ -126,21 +127,52 @@ fig_drc_vg.B.up
 # Sample top 2 and bottom 2 individuals in each dose group
 df.sim.vi_sample_post <- df.sim.vi %>%
   filter(Phase == "Post") %>%
-  mutate(rank_y = rank(y), .by = Group_f) %>%
-  filter(rank_y %in% c(1, 2, 18, 20))
+  mutate(rank_ymax_i = rank(ymax_i), .by = Group_f) %>%
+  filter(rank_ymax_i %in% c(2, 6, 14, 18))
+
 df.sim.vi_sample_pre <- df.sim.vi %>%
   filter(Phase == "Pre") %>%
   filter(ID %in% df.sim.vi_sample_post$ID)
 # Attach control value
 df.sim.vi_sample <- rbind(df.sim.vi_sample_pre, df.sim.vi_sample_post[, 1:14])
 
-# Average undelrying dose-response
+# Average underlying dose-response
 df.sim.lines.vi <- data.frame(Dose = seq(0, 100, by = 0.01)) %>%
   mutate(y = ymax / (1 + exp(b * log(Dose / e))))
 
-fig_drc_vi.C.up <- ggplot(df.sim.vi_sample, aes(y = y, x = Dose)) +
-  geom_line(linewidth = .5, aes(group = ID), alpha = .15) +
-  geom_point(size = 2.5, shape = 21, fill = "white", alpha = .8) +
+pal <- ltc(heatmap2, n = 6, type = "continuous")
+
+# fig_drc_vi.C.up <- ggplot(df.sim.vi_sample, aes(y = mu, x = Dose)) +
+#   geom_line(linewidth = .5, aes(group = ID), alpha = .15) +
+#   # geom_point(size = 2.5, shape = 21, fill = "white", alpha = .8) +
+#   geom_line(
+#     data = df.sim.lines.vi,
+#     aes(y = y, x = Dose),
+#     linewidth = 1,
+#     color = "dodgerblue"
+#   ) +
+#   facet_wrap(~Group_f) +
+#   ylim(0, 150) +
+#   labs(x = "Dose", y = "Phenotype", title = "C) Among-individuals") +
+#   theme_custom() +
+#   theme(legend.position = "none")
+# fig_drc_vi.C.up
+
+fig_drc_vi.C.up <- ggplot(df.sim.vi_sample, aes(y = mu, x = Dose)) +
+  geom_line(
+    linewidth = .6,
+    # alpha = .4,
+    aes(group = ID, color = as.factor(Group_f))
+  ) +
+  geom_point(
+    size = 2.5,
+    shape = 21,
+    fill = "white",
+    alpha = .9,
+    aes(color = as.factor(Group_f))
+  ) +
+  # scale_color_manual(values = pal) +
+  scale_color_ltc(heatmap2, direction = -1) +
   geom_line(
     data = df.sim.lines.vi,
     aes(y = y, x = Dose),
@@ -148,7 +180,7 @@ fig_drc_vi.C.up <- ggplot(df.sim.vi_sample, aes(y = y, x = Dose)) +
     color = "dodgerblue"
   ) +
   # facet_wrap(~Group_f) +
-  # ylim(0, 150) +
+  ylim(0, 150) +
   labs(x = "Dose", y = "Phenotype", title = "C) Among-individuals") +
   theme_custom() +
   theme(legend.position = "none")
@@ -156,23 +188,29 @@ fig_drc_vi.C.up
 
 # Lower pannel: Parameters to report ----
 ## Figure A: Phenotypic-level (CI and PRI) ----
-# CVR as a function of dose
-df.sim.cvr <- df.sim.lines.vp %>%
-  select(Dose, mu, pi_low, pi_up) %>%
-  summarise(
-    mu = mu,
-    sdR = pi_up - pi_low, # Approximate residual variance as prediction interval range
-    CVR = sdR / mu,
-    .by = Dose
-  )
+df.intervals.vp$conf.type.2 <- c(
+  "Prediction \n Interval",
+  "Confidence \n Interval (y)",
+  "Confidence \n Interval (e)"
+)
 
-fig_drc_vp.A.low <- df.sim.cvr %>%
-  ggplot(aes(x = Dose, y = sdR^2)) +
-  geom_line(linewidth = 1) +
-  scale_color_wsj() +
-  ylab("Total Variance in Phenotype") +
-  theme_custom() +
+fig_drc_vp.A.low <- df.intervals.vp %>%
+  filter(conf.type != "ci") %>%
+  ggplot(aes(x = value, y = conf.type.2)) +
+  geom_pointinterval(aes(
+    x = 50,
+    xmin = low.value,
+    xmax = up.value
+  )) +
+  xlim(44, 55) +
+  labs(x = "Dose", y = expression(EC[50])) +
+
+  theme_classic(12) +
   theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.y = element_text(angle = 45),
+    # axis.ticks.y = element_blank(),
     legend.position = "none"
   )
 fig_drc_vp.A.low
