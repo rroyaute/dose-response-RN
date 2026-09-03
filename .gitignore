@@ -12,3 +12,5 @@
 /_SBC_cache_DR_RN_rstan
 outputs/figs/fig.dr.full.tiff
 .positai
+data/df.sim.vp.csv
+data/df.sim.vp.csv
